@@ -1,0 +1,20 @@
+{
+  "values": [
+    {
+      "id": "r1",
+      "type": "chantier",
+      "title": "Travaux rue Garibaldi",
+      "description": "Voie réduite",
+      "lat": 45.76,
+      "lon": 4.85
+    },
+    {
+      "id": "r2",
+      "type": "incident",
+      "title": "Accident A6",
+      "description": "Sur la bande d'arrêt",
+      "lat": 45.74,
+      "lon": 4.83
+    }
+  ]
+}

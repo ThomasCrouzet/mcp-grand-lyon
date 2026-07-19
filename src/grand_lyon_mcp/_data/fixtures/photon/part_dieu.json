@@ -1,0 +1,39 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.8618,
+          45.7606
+        ]
+      },
+      "properties": {
+        "name": "Gare Part-Dieu",
+        "city": "Lyon",
+        "postcode": "69003",
+        "osm_id": 12345,
+        "confidence": 0.91
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.855,
+          45.761
+        ]
+      },
+      "properties": {
+        "name": "Part-Dieu",
+        "city": "Lyon",
+        "postcode": "69003",
+        "osm_id": 12346,
+        "confidence": 0.85
+      }
+    }
+  ]
+}

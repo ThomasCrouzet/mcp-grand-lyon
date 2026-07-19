@@ -1,0 +1,160 @@
+[project]
+name = "grand-lyon-mcp"
+dynamic = ["version"]
+description = "Local read-only MCP server exposing Métropole de Lyon (TCL, Vélo'v, parkings, traffic, facilities, waste) open data"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Thomas Crouzet" }]
+keywords = ["mcp", "lyon", "grand-lyon", "transit", "open-data", "tcl", "velov"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
+  "Typing :: Typed",
+]
+dependencies = [
+  "mcp>=1.28.1,<2",
+  "httpx>=0.28.0",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.7.0",
+  "aiosqlite>=0.20.0",
+  "pyyaml>=6.0.2",
+  "typer>=0.15.0",
+  "tenacity>=9.0.0",
+  "platformdirs>=4.3.0",
+  "rapidfuzz>=3.10.0",
+  "shapely>=2.0.6",
+  "pyproj>=3.7.0",
+  "python-dateutil>=2.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.25.0",
+  "pytest-cov>=6.0.0",
+  "respx>=0.22.0",
+  "ruff>=0.9.0",
+  "mypy>=1.14.0",
+  "types-PyYAML>=6.0.12",
+  "types-python-dateutil>=2.9.0",
+]
+
+[project.scripts]
+grand-lyon-mcp = "grand_lyon_mcp.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/ThomasCrouzet/mcp-grand-lyon"
+Repository = "https://github.com/ThomasCrouzet/mcp-grand-lyon"
+Issues = "https://github.com/ThomasCrouzet/mcp-grand-lyon/issues"
+Changelog = "https://github.com/ThomasCrouzet/mcp-grand-lyon/blob/main/CHANGELOG.md"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/grand_lyon_mcp/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/grand_lyon_mcp"]
+# Les données non-.py (migrations SQL, templates de config, fixtures de démo) vivent
+# SOUS le package : `packages` les inclut. `artifacts` garantit leur présence même si
+# un pattern VCS les excluait, pour que `pip install` / `uvx` marchent hors checkout git.
+artifacts = [
+  "src/grand_lyon_mcp/migrations/*.sql",
+  "src/grand_lyon_mcp/_data/**/*",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "ASYNC",
+  "S",
+  "RUF",
+]
+ignore = [
+  "S101",  # assert in tests
+  "S104",  # binding all interfaces (not used)
+  "ASYNC240",  # local Path I/O in async is intentional (SQLite/config files)
+  "B008",  # Typer Option defaults
+  "UP047",  # keep TypeVar style for with_retry
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B011"]
+"scripts/**" = ["S"]
+"src/grand_lyon_mcp/setup_wizard.py" = ["S603", "S607"]
+"src/grand_lyon_mcp/providers/live_providers.py" = ["S112", "SIM102"]
+# Noms de tables constants dans un f-string DELETE (pas d'entrée utilisateur) :
+"src/grand_lyon_mcp/providers/gtfs/importer.py" = ["S608"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+mypy_path = "src"
+packages = ["grand_lyon_mcp"]
+
+[[tool.mypy.overrides]]
+module = ["shapely.*", "pyproj.*", "rapidfuzz.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+  "live: tests that require network and live credentials (deselect with -m 'not live')",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["grand_lyon_mcp"]
+omit = [
+  "*/grand_lyon_mcp/__main__.py",
+  "*/grand_lyon_mcp/adapters/mcp/server.py",
+  # CLI network/live branches and stdio serve entry (system/IO boundary)
+  "*/grand_lyon_mcp/cli.py",
+  # Interactive TUI setup wizard (exercised manually / integration smoke)
+  "*/grand_lyon_mcp/setup_wizard.py",
+  # Live HTTP client wrappers (covered via fixtures + respx at service layer)
+  "*/grand_lyon_mcp/providers/live_providers.py",
+  "*/grand_lyon_mcp/providers/gtfs/downloader.py",
+  "*/grand_lyon_mcp/providers/siri/client.py",
+  "*/grand_lyon_mcp/providers/photon/client.py",
+  "*/grand_lyon_mcp/providers/datagrandlyon/ogc_features.py",
+  "*/grand_lyon_mcp/providers/routing/base.py",
+  "*/grand_lyon_mcp/services/traffic_service.py",
+]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]

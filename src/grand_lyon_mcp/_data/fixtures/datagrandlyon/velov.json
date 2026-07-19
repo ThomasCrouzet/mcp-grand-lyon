@@ -1,0 +1,34 @@
+{
+  "values": [
+    {
+      "number": "1001",
+      "name": "Part-Dieu / Vivier Merle",
+      "lat": 45.7606,
+      "lng": 4.861,
+      "available_bikes": 8,
+      "available_bike_stands": 5,
+      "bike_stands": 20,
+      "status": "OPEN"
+    },
+    {
+      "number": "1002",
+      "name": "Bellecour / République",
+      "lat": 45.7578,
+      "lng": 4.8325,
+      "available_bikes": 3,
+      "available_bike_stands": 12,
+      "bike_stands": 20,
+      "status": "OPEN"
+    },
+    {
+      "number": "1003",
+      "name": "Hôtel de Ville",
+      "lat": 45.767,
+      "lng": 4.836,
+      "available_bikes": 0,
+      "available_bike_stands": 15,
+      "bike_stands": 16,
+      "status": "OPEN"
+    }
+  ]
+}

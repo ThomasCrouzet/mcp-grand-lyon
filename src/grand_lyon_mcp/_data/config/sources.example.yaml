@@ -1,0 +1,133 @@
+version: 1
+sources:
+  velov_realtime:
+    provider: datapusher
+    enabled: true
+    required: true
+    service: rdata
+    exact_table_hints:
+      - jcd_jcdecaux.jcdvelov
+    search_keywords:
+      - velov
+      - disponibilité
+      - temps réel
+    parser: velov_realtime_v1
+    realtime: true
+    ttl_seconds: 45
+    maximum_stale_seconds: 300
+    authentication: basic
+    attribution: Métropole de Lyon / JCDecaux
+    license: discover
+  tcl_departures:
+    provider: datapusher
+    enabled: true
+    required: true
+    service: rdata
+    search_keywords:
+      - prochains passages
+      - TCL
+      - Rhônexpress
+    parser: tcl_departures_v1
+    realtime: true
+    ttl_seconds: 30
+    maximum_stale_seconds: 180
+    authentication: basic
+    attribution: SYTRAL Mobilités
+    license: discover
+  tcl_accessibility_alerts:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - alerte accessibilité
+      - TCL
+    parser: tcl_accessibility_alerts_v1
+    realtime: true
+    ttl_seconds: 90
+    maximum_stale_seconds: 600
+    authentication: basic
+    attribution: SYTRAL Mobilités
+    license: discover
+  tcl_alerts:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - alertes trafic
+      - TCL
+    parser: tcl_alerts_v1
+    realtime: true
+    ttl_seconds: 90
+    maximum_stale_seconds: 600
+    authentication: basic
+    attribution: SYTRAL Mobilités
+    license: discover
+  parking_realtime:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - parkings
+      - disponibilités
+    parser: parking_v1
+    realtime: true
+    ttl_seconds: 60
+    maximum_stale_seconds: 300
+    authentication: basic
+    attribution: Métropole de Lyon
+    license: discover
+  park_and_ride:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - parcs relais
+      - P+R
+    parser: pr_v1
+    realtime: true
+    ttl_seconds: 60
+    maximum_stale_seconds: 300
+    authentication: basic
+    attribution: SYTRAL Mobilités
+    license: discover
+  traffic:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - etat trafic
+      - trafic
+    parser: traffic_v1
+    realtime: true
+    ttl_seconds: 60
+    maximum_stale_seconds: 300
+    authentication: basic
+    attribution: Métropole de Lyon
+    license: discover
+  road_events:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - evenements routiers
+      - chantiers
+    parser: road_events_v1
+    realtime: true
+    ttl_seconds: 90
+    maximum_stale_seconds: 600
+    authentication: basic
+    attribution: Métropole de Lyon
+    license: discover
+  toilets:
+    provider: datapusher
+    enabled: true
+    required: false
+    search_keywords:
+      - toilettes publiques
+    parser: toilets_v1
+    realtime: false
+    ttl_seconds: 86400
+    maximum_stale_seconds: 172800
+    authentication: basic
+    attribution: Métropole de Lyon
+    license: discover

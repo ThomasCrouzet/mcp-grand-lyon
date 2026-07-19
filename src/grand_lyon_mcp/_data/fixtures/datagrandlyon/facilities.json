@@ -1,0 +1,26 @@
+{
+  "values": [
+    {
+      "id": "f1",
+      "name": "Toilettes Tête d'Or",
+      "category": "toilet",
+      "lat": 45.777,
+      "lon": 4.855,
+      "hours": "08:00-20:00"
+    },
+    {
+      "id": "f2",
+      "name": "Fontaine Tête d'Or",
+      "category": "drinking_water",
+      "lat": 45.776,
+      "lon": 4.854
+    },
+    {
+      "id": "f3",
+      "name": "Parc de la Tête d'Or",
+      "category": "park",
+      "lat": 45.7772,
+      "lon": 4.8555
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+version: 1
+places:
+  home:
+    label: Domicile
+    address: "Lyon 3e"
+    latitude: 45.7606
+    longitude: 4.8618
+  work:
+    label: Travail
+    address: "Lyon 2e Bellecour"
+    latitude: 45.7578
+    longitude: 4.8320
+commutes:
+  home_to_work:
+    origin: home
+    destination: work
+    preferred_modes:
+      - tcl
+      - velov
+    preferred_lines: []
+    max_walking_m: 800
+    minimum_velov_bikes: 3
+    minimum_velov_docks: 3
+    wheelchair: false
+    avoid_disruptions: true
+briefings:
+  weekday_morning:
+    commute: home_to_work
+    include:
+      - transit
+      - accessibility
+      - velov
+      - traffic
+      - environment
+    notify_only_on_change: true

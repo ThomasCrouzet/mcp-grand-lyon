@@ -1,0 +1,10 @@
+{
+  "values": [
+    {
+      "id": "acc1",
+      "location": "Bellecour",
+      "status": "ascenseur indisponible",
+      "description": "Ascenseur quai direction Perrache"
+    }
+  ]
+}

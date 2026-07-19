@@ -1,0 +1,76 @@
+# Known DataGrandLyon tables validated for standard accounts.
+# Used when full catalog list returns 403 (métier permission limit).
+# No secrets. Add a source = entry here + `catalog validate` (no business code change).
+version: 1
+tables:
+  velov_realtime:
+    service: rdata
+    table_name: jcd_jcdecaux.jcdvelov
+    status: OK
+    attribution: Métropole de Lyon / JCDecaux
+  tcl_departures:
+    service: rdata
+    table_name: tcl_sytral.tclpassagearret
+    status: OK
+    attribution: SYTRAL Mobilités
+  tcl_alerts:
+    service: rdata
+    table_name: tcl_sytral.tclalertetrafic_2
+    status: OK
+    attribution: SYTRAL Mobilités
+  tcl_accessibility_alerts:
+    service: rdata
+    table_name: tcl_sytral.tclalerteaccessibilite
+    status: OK
+    attribution: SYTRAL Mobilités
+  parking_capacity:
+    service: grandlyon
+    table_name: pvo_patrimoine_voirie.pvoparking
+    status: OK
+    attribution: Métropole de Lyon
+    notes: "Patrimoine / capacité — pas de places libres inventées"
+  parking_realtime:
+    service: grandlyon
+    table_name: pvo_patrimoine_voirie.pvoparking
+    status: OK
+    attribution: Métropole de Lyon
+    notes: "Fallback capacité; dispo live via OGC si résolu"
+  park_and_ride:
+    service: rdata
+    table_name: tcl_sytral.tclparcrelaistr
+    status: OK
+    attribution: SYTRAL Mobilités
+  road_events:
+    service: grandlyon
+    table_name: pvo_patrimoine_voirie.pvochantierperturbant
+    status: OK
+    attribution: Métropole de Lyon
+  toilets:
+    service: grandlyon
+    table_name: adr_voie_lieu.adrtoilettepublique_latest
+    status: OK
+    attribution: Métropole de Lyon
+  drinking_water:
+    service: grandlyon
+    table_name: adr_voie_lieu.adrbornefontaine_latest
+    status: OK
+    attribution: Métropole de Lyon
+  bike_pumps:
+    service: grandlyon
+    table_name: pvo_patrimoine_voirie.pvostationvelovpompe
+    status: OK
+    attribution: Métropole de Lyon
+  waste_facilities:
+    service: grandlyon
+    table_name: gip_proprete.gipdecheterie_3_0_0
+    status: OK
+    attribution: Métropole de Lyon
+
+# OGC API Features candidates (public collections, no catalog list required)
+ogc_candidates:
+  parking_availability:
+    collection: parkings-de-la-metropole-de-lyon-disponibilites-temps-reel-v2
+    purpose: live public parking free spaces
+    status: candidate
+  # environment indicators remain disabled until validated fields + licence
+  # air_quality / pollen / heat: unresolved

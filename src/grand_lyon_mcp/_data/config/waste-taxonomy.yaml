@@ -1,0 +1,62 @@
+version: 1
+rules:
+  - id: battery_electric_bike
+    category: portable_battery
+    priority: 100
+    confidence: 0.93
+    hazardous: true
+    aliases:
+      - batterie de vélo
+      - batterie velo
+      - batterie de vélo électrique
+    patterns:
+      - "batterie.*(v[eé]lo|bike)"
+  - id: portable_battery
+    category: portable_battery
+    priority: 80
+    confidence: 0.85
+    hazardous: true
+    aliases: [pile, batterie]
+    patterns: ["\\bpiles?\\b"]
+  - id: glass
+    category: glass
+    priority: 50
+    confidence: 0.85
+    hazardous: false
+    aliases: [verre, bouteille en verre]
+    patterns: ["\\bverre\\b"]
+  - id: cardboard
+    category: cardboard
+    priority: 45
+    confidence: 0.85
+    hazardous: false
+    aliases: [carton]
+    patterns: ["\\bcarton\\b"]
+  - id: medication
+    category: medication
+    priority: 75
+    confidence: 0.9
+    hazardous: true
+    aliases: [médicament, medicament]
+    patterns: ["m[eé]dicament"]
+  - id: paint
+    category: paint
+    priority: 70
+    confidence: 0.9
+    hazardous: true
+    aliases: [peinture]
+    patterns: ["peinture"]
+  - id: electrical
+    category: electrical_equipment
+    priority: 70
+    confidence: 0.88
+    hazardous: true
+    aliases: [ordinateur, téléphone, deee]
+    patterns: ["ordinateur|téléphone|deee"]
+  - id: green
+    category: green_waste
+    priority: 40
+    confidence: 0.8
+    hazardous: false
+    aliases: [déchets verts, tonte]
+    patterns: ["d[eé]chets?\\s+verts?"]
