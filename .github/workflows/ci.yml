@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Sync (locked)
+        run: uv sync --locked --all-extras --dev
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Mypy
+        run: uv run mypy src
+      - name: Pytest (offline)
+        run: uv run pytest -m "not live" --cov --cov-report=term-missing --cov-report=xml
+        env:
+          GRAND_LYON_MCP_OFFLINE: "true"
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel + sdist
+        run: uv build
+      - name: Install wheel in a clean venv and smoke-test (offline, out of tree)
+        run: |
+          set -euo pipefail
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install --upgrade pip >/dev/null
+          /tmp/venv/bin/pip install "$WHEEL"
+          cd /tmp                                  # hors du checkout : valide les données empaquetées
+          export GRAND_LYON_MCP_OFFLINE=true
+          export GRAND_LYON_MCP_CONFIG_DIR=/tmp/glm-cfg
+          export GRAND_LYON_MCP_DATA_DIR=/tmp/glm-data
+          /tmp/venv/bin/grand-lyon-mcp version
+          /tmp/venv/bin/grand-lyon-mcp db migrate
+          /tmp/venv/bin/grand-lyon-mcp smoke --tool lyon_resolve_place
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

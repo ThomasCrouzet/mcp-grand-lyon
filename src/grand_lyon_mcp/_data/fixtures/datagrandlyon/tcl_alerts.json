@@ -1,0 +1,20 @@
+[
+  {
+    "id": "al1",
+    "title": "Perturbation ligne A",
+    "description": "Ralentissements",
+    "type": "majeur",
+    "lines": [
+      "A"
+    ]
+  },
+  {
+    "id": "al2",
+    "title": "Travaux C3",
+    "description": "Déviation",
+    "type": "mineur",
+    "lines": [
+      "C3"
+    ]
+  }
+]

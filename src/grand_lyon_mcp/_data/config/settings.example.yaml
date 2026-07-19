@@ -1,0 +1,28 @@
+version: 1
+runtime:
+  timezone: Europe/Paris
+  locale: fr-FR
+  offline: false
+  max_parallel_requests: 6
+results:
+  maximum_items_per_tool: 20
+  maximum_warning_count: 20
+places:
+  default_radius_m: 1000
+  maximum_radius_m: 5000
+  fuzzy_score_threshold: 72
+cache:
+  allow_stale_on_error: true
+  negative_ttl_seconds: 30
+network:
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 20
+  maximum_attempts: 3
+  verify_tls: true
+journey_scoring:
+  duration: 0.35
+  reliability: 0.25
+  disruptions: 0.15
+  walking: 0.10
+  availability: 0.10
+  user_preference: 0.05

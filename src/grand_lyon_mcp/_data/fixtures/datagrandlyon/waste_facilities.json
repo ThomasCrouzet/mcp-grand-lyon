@@ -1,0 +1,27 @@
+{
+  "values": [
+    {
+      "id": "w1",
+      "name": "Déchèterie de Gerland",
+      "lat": 45.73,
+      "lon": 4.83,
+      "categories": [
+        "portable_battery",
+        "electrical_equipment",
+        "green_waste",
+        "paint"
+      ],
+      "open_status": "unknown"
+    },
+    {
+      "id": "w2",
+      "name": "Point collecte piles Part-Dieu",
+      "lat": 45.761,
+      "lon": 4.86,
+      "categories": [
+        "portable_battery"
+      ],
+      "open_status": "unknown"
+    }
+  ]
+}

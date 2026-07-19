@@ -1,0 +1,16 @@
+{
+  "values": [
+    {
+      "id": "t1",
+      "area": "Part-Dieu",
+      "level": "slow",
+      "description": "Circulation dense"
+    },
+    {
+      "id": "t2",
+      "area": "Périphérique nord",
+      "level": "congested",
+      "description": "Bouchon"
+    }
+  ]
+}

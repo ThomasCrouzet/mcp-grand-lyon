@@ -1,0 +1,26 @@
+{
+  "Siri": {
+    "ServiceDelivery": {
+      "EstimatedTimetableDelivery": {
+        "EstimatedJourneyVersionFrame": {
+          "EstimatedVehicleJourney": [
+            {
+              "LineRef": "A",
+              "DestinationName": "Vaulx-en-Velin La Soie",
+              "EstimatedCalls": {
+                "EstimatedCall": [
+                  {
+                    "StopPointRef": "Bellecour",
+                    "AimedDepartureTime": "2026-07-20T08:04:00+02:00",
+                    "ExpectedDepartureTime": "2026-07-20T08:05:00+02:00",
+                    "DestinationDisplay": "Vaulx-en-Velin La Soie"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "values": [
+    {
+      "id": "p1",
+      "name": "Parking Hôtel de Ville",
+      "type": "public",
+      "lat": 45.7675,
+      "lon": 4.8355,
+      "capacity": 400,
+      "available": 42
+    },
+    {
+      "id": "pr1",
+      "name": "P+R Laurent Bonnevay",
+      "type": "parc relais",
+      "lat": 45.765,
+      "lon": 4.91,
+      "capacity": 800,
+      "available": 120
+    }
+  ]
+}

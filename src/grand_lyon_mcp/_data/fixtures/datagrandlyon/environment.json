@@ -1,0 +1,16 @@
+{
+  "supported": [
+    "pollen",
+    "air_quality"
+  ],
+  "pollen": {
+    "value": "modéré",
+    "unit": null,
+    "zone": "Lyon"
+  },
+  "air_quality": {
+    "value": 42,
+    "unit": "AQI",
+    "zone": "Lyon"
+  }
+}

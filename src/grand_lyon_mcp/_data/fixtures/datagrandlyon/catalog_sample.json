@@ -1,0 +1,14 @@
+[
+  {
+    "name": "jcd_jcdecaux.jcdvelov",
+    "title": "Stations Vélo'v temps réel"
+  },
+  {
+    "name": "tcl_sytral.tclpassagearret",
+    "title": "Prochains passages TCL"
+  },
+  {
+    "name": "tcl_sytral.tclarret",
+    "title": "Points d'arrêt TCL"
+  }
+]

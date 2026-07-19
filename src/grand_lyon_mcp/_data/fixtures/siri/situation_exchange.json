@@ -1,0 +1,27 @@
+{
+  "Siri": {
+    "ServiceDelivery": {
+      "SituationExchangeDelivery": {
+        "Situations": {
+          "PtSituationElement": [
+            {
+              "SituationNumber": "SX-1",
+              "Summary": "Perturbation ligne A",
+              "Description": "Ralentissements entre Bellecour et Part-Dieu",
+              "Severity": "severe",
+              "Affects": {
+                "Networks": {
+                  "AffectedNetwork": {
+                    "AffectedLine": {
+                      "LineRef": "A"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
