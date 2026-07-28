@@ -1,21 +1,12 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.json",
-  "name": "io.github.thomascrouzet/grand-lyon-mcp",
-  "description": "Local read-only MCP server exposing Métropole de Lyon (TCL, Vélo'v, parkings, traffic, facilities, waste) open data",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ThomasCrouzet/mcp-grand-lyon",
+  "title": "grand-lyon-mcp",
+  "description": "Local read-only MCP server for Métropole de Lyon open data (TCL, Vélo'v, parking, traffic).",
   "repository": {
     "url": "https://github.com/ThomasCrouzet/mcp-grand-lyon",
     "source": "github"
   },
   "version": "0.1.0",
-  "packages": [
-    {
-      "registry_type": "pypi",
-      "registry_base_url": "https://pypi.org",
-      "identifier": "grand-lyon-mcp",
-      "version": "0.1.0",
-      "transport": {
-        "type": "stdio"
-      }
-    }
-  ]
+  "websiteUrl": "https://github.com/ThomasCrouzet/mcp-grand-lyon#english"
 }
