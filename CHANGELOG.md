@@ -13,8 +13,8 @@ Première version publique open source.
 - Mode **offline/fixtures** (sans compte ni réseau) et mode **live** DataGrandLyon.
 - Providers : DataPusher, OGC API Features, GTFS, SIRI Lite, Photon, Transitous (optionnel).
 - Stockage SQLite (FTS5 + RTree), cache HTTP (ETag/Last-Modified, stale-on-error, single-flight), redaction systématique des secrets, allowlist réseau anti-SSRF.
-- Paquet **installable** (`pip`/`uvx`) : templates de config et fixtures de démo empaquetés (`grand_lyon_mcp/_data`), résolus via `importlib.resources`.
+- Paquet **installable depuis le dépôt** (`pip install .` / `uv sync`) : templates de config et fixtures de démo empaquetés (`grand_lyon_mcp/_data`), résolus via `importlib.resources`. Pas encore publié sur PyPI.
 - Documentation FR (README, `docs/tools.md`, `docs/mcp-clients.md`, `docs/architecture.md`, `docs/data-sources.md`, ADR) ; `ATTRIBUTIONS.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`.
-- CI GitHub Actions : lint/format (ruff), types (mypy strict), tests offline (pytest, matrice 3.12/3.13), build + smoke du wheel, scan de secrets (gitleaks), CodeQL, publication PyPI (Trusted Publishing).
+- CI GitHub Actions : lint/format (ruff), types (mypy strict), tests offline (pytest, matrice 3.12/3.13), build + smoke du wheel, scan de secrets (gitleaks), CodeQL. Workflow de release (tag `v*`) prêt pour GitHub Release + PyPI Trusted Publishing, non encore déclenché.
 
-[0.1.0]: https://github.com/ThomasCrouzet/mcp-grand-lyon/releases/tag/v0.1.0
+[0.1.0]: https://github.com/ThomasCrouzet/mcp-grand-lyon
