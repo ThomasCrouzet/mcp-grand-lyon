@@ -1,4 +1,4 @@
-"""Environment brief — only resolved indicators."""
+"""Environment brief, only resolved indicators."""
 
 from __future__ import annotations
 

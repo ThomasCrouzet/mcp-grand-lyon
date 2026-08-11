@@ -87,7 +87,7 @@ def _run_gum(args: list[str]) -> str | None:
     if not gum or not _is_interactive():
         return None
     try:
-        # Important: do NOT capture stderr — gum draws the TUI there.
+        # Important: do NOT capture stderr: gum draws the TUI there.
         result = subprocess.run(
             [gum, *args],
             check=False,
@@ -313,7 +313,7 @@ def run_setup(
 ) -> int:
     """Run the setup wizard. Returns process exit code."""
     repo = _repo_root()
-    _rule("grand-lyon-mcp — assistant de configuration")
+    _rule("grand-lyon-mcp, assistant de configuration")
     _panel(
         "[bold]Bienvenue[/bold]\n\n"
         "Cet assistant va :\n"
@@ -381,7 +381,7 @@ def run_setup(
         )
 
     # ── Interactive path ─────────────────────────────────────────────
-    _rule("1 / 4 — Compte DataGrandLyon")
+    _rule("1 / 4; Compte DataGrandLyon")
     _print(
         "Pour les [bold]vraies[/bold] données (TCL, Vélo'v, parkings…), "
         "il faut le login / mot de passe du portail open data "
@@ -464,14 +464,14 @@ def run_setup(
             else "Mode offline."
         )
 
-    _rule("2 / 4 — Répertoires")
+    _rule("2 / 4; Répertoires")
     config_dir = Path(_prompt("Répertoire de configuration", str(config_dir))).expanduser()
     data_dir = Path(_prompt("Répertoire de données", str(data_dir))).expanduser()
     secrets_path = config_dir / SECRETS_NAME
     # Re-read if user changed config dir
     existing = parse_env_file(secrets_path)
 
-    _rule("3 / 4 — Options")
+    _rule("3 / 4; Options")
     log_level = _choose(
         "Niveau de log",
         ["INFO", "DEBUG", "WARNING", "ERROR"],
@@ -489,7 +489,7 @@ def run_setup(
     values["TRANSITOUS_ENABLED"] = "true" if transitous else "false"
     values["GRAND_LYON_MCP_OFFLINE"] = "true" if mode_offline else "false"
 
-    _rule("4 / 4 — Confirmation")
+    _rule("4 / 4; Confirmation")
     mode_label = "offline (fixtures)" if mode_offline else "live (DataGrandLyon)"
     summary = (
         f"  Mode          : [bold]{mode_label}[/bold]\n"

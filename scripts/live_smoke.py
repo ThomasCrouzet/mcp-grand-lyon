@@ -335,7 +335,7 @@ async def main() -> int:
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     print(f"\nWrote {out}")
 
-    # Exit code: soft — credentials may fail but public + app path should work
+    # Exit code: soft: credentials may fail but public + app path should work
     tools_ok = all(
         t.get("status")
         in {"ok", "partial", "ambiguous", "not_found", "unavailable", "invalid_request"}

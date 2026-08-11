@@ -12,7 +12,7 @@ from typing import Any
 def classify_catalog_http_status(status_code: int) -> dict[str, str]:
     """Map HTTP status of catalog list to doctor-style auth/catalog_list rows.
 
-    403 is a métier permission limit — not an authentication failure.
+    403 is a métier permission limit, not an authentication failure.
     """
     if status_code == 200:
         return {"auth": "OK", "catalog_list": "OK", "detail": "full list accessible"}
@@ -22,7 +22,7 @@ def classify_catalog_http_status(status_code: int) -> dict[str, str]:
         return {
             "auth": "OK",
             "catalog_list": "FORBIDDEN",
-            "detail": "403 — pas la permission (limite métier, use known+ogc)",
+            "detail": "403: pas la permission (limite métier, use known+ogc)",
         }
     return {
         "auth": "UNKNOWN",
@@ -106,7 +106,7 @@ async def hybrid_catalog_scan(
             results["catalog_list"] = "OK"
         elif catalog_forbidden:
             results["catalog_list"] = "FORBIDDEN"
-            results["note"] = "403 catalogue n'est pas un échec d'auth — bascule known+ogc"
+            results["note"] = "403 catalogue n'est pas un échec d'auth, bascule known+ogc"
 
     if should_use_known_ogc_fallback(mode_l, catalog_usable):
         probe_known = (

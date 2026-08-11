@@ -15,7 +15,7 @@ from grand_lyon_mcp.version import __version__
 
 app = typer.Typer(
     name="grand-lyon-mcp",
-    help="Serveur MCP local — services Métropole de Lyon / Grand Lyon.",
+    help="Serveur MCP local: services Métropole de Lyon / Grand Lyon.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -84,7 +84,7 @@ def doctor() -> None:
     lines: list[str] = []
 
     def row(check: str, status: str, detail: str = "") -> None:
-        lines.append(f"{status:12} {check}" + (f" — {detail}" if detail else ""))
+        lines.append(f"{status:12} {check}" + (f"; {detail}" if detail else ""))
 
     # credentials presence only
     if settings.has_credentials():
@@ -174,7 +174,7 @@ def doctor() -> None:
         try:
             sources = await app_c.source_registry.list_all()
             if not sources:
-                row("source registry", "UNRESOLVED", "empty — run catalog scan")
+                row("source registry", "UNRESOLVED", "empty, run catalog scan")
             else:
                 for s in sources:
                     st = s.get("status") or "UNRESOLVED"
@@ -368,7 +368,7 @@ def catalog_scan(
                     results["catalog_list"] = "OK"
                 elif catalog_forbidden:
                     results["catalog_list"] = "FORBIDDEN"
-                    results["note"] = "403 catalogue n'est pas un échec d'auth — bascule known+ogc"
+                    results["note"] = "403 catalogue n'est pas un échec d'auth, bascule known+ogc"
 
             if mode_l == "known" or (mode_l == "auto" and not catalog_usable):
                 await _probe_known()
@@ -480,7 +480,7 @@ def sync_gtfs(
 
 @sync_app.command("static")
 def sync_static() -> None:
-    """Synchronise les jeux statiques (équipements) — stub offline-friendly."""
+    """Synchronise les jeux statiques (équipements), stub offline-friendly."""
     settings = get_settings()
     if settings.offline:
         typer.echo(json.dumps({"status": "OK", "mode": "offline", "message": "skipped network"}))
@@ -611,7 +611,7 @@ def smoke_cmd(
     """Teste les outils MCP en local (sans client MCP / sans stdio).
 
     Affiche le status de chaque appel. Utile pour vérifier que l'install marche
-    après `make setup` — contrairement à `serve`, cette commande parle à l'humain.
+    après `make setup`, contrairement à `serve`, cette commande parle à l'humain.
     """
     from grand_lyon_mcp.adapters.mcp.tools import PUBLIC_TOOL_NAMES, dispatch_tool
     from grand_lyon_mcp.bootstrap import build_app
@@ -670,7 +670,7 @@ def smoke_cmd(
         return rows
 
     typer.echo(
-        f"grand-lyon-mcp smoke — mode={'offline' if settings.offline else 'live'} "
+        f"grand-lyon-mcp smoke, mode={'offline' if settings.offline else 'live'} "
         f"db={settings.resolved_db_path()}"
     )
     typer.echo("")

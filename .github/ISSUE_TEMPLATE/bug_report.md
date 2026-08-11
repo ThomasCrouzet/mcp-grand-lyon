@@ -21,5 +21,5 @@ Décrivez le problème clairement.
 
 **Logs (stderr, sans secret)**
 ```
-coller ici — ne jamais inclure d'identifiant DataGrandLyon
+coller ici, ne jamais inclure d'identifiant DataGrandLyon
 ```

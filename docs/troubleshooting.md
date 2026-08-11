@@ -18,11 +18,11 @@
 | accessibilité toujours unknown | Pas d’incident + pas de GTFS wheelchair | Honnête par défaut ; `evidence[]` + notes |
 | durée TCL absente | Transitous off / routeur KO | `estimated_duration_seconds=null` + `ROUTING_UNAVAILABLE` |
 
-## Doctor — lecture des lignes
+## Doctor: lecture des lignes
 
 ```
-OK           auth — authenticated (403 is not auth failure)
-FORBIDDEN    catalog_list — 403 — pas la permission (limite métier, use known+ogc)
+OK           auth, authenticated (403 is not auth failure)
+FORBIDDEN    catalog_list; 403, pas la permission (limite métier, use known+ogc)
 OK           source:velov_realtime
 UNRESOLVED   source:traffic
 ```

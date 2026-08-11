@@ -1,4 +1,4 @@
-"""Deterministic journey scoring — no invented TCL duration."""
+"""Deterministic journey scoring, no invented TCL duration."""
 
 from __future__ import annotations
 

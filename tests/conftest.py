@@ -1,4 +1,4 @@
-"""Shared pytest fixtures — offline by default."""
+"""Shared pytest fixtures, offline by default."""
 
 from __future__ import annotations
 

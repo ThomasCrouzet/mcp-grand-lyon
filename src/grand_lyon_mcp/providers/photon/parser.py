@@ -31,7 +31,7 @@ def parse_photon_response(data: Any, *, limit: int = 5) -> list[PlaceCandidate]:
         label = ", ".join(label_parts)
         osm_id = props.get("osm_id") or props.get("osm_value") or name
         conf_raw = props.get("confidence")
-        # Photon often exposes "extent" as a bbox list — never cast that to float.
+        # Photon often exposes "extent" as a bbox list: never cast that to float.
         if isinstance(conf_raw, (int, float, str)):
             try:
                 conf = float(conf_raw)

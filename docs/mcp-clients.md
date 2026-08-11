@@ -35,8 +35,8 @@ Exemple de sortie (format standard `mcpServers`, à coller dans la config de vot
 
 Ne placez **jamais** d’identifiant dans la configuration du client MCP.
 
-- **Option A — env hérité** : exportez `DATAGRANDLYON_USERNAME` et `DATAGRANDLYON_PASSWORD` dans l’environnement qui lance le client MCP ; le serveur en hérite.
-- **Option B — wrapper local** : pointez `command` vers `scripts/run_mcp.sh` (chemin absolu). Le wrapper source `secrets.env` (`chmod 600`) hors dépôt et, sans identifiants, bascule automatiquement en mode offline (fixtures).
+- **Option A: env hérité** : exportez `DATAGRANDLYON_USERNAME` et `DATAGRANDLYON_PASSWORD` dans l’environnement qui lance le client MCP ; le serveur en hérite.
+- **Option B: wrapper local** : pointez `command` vers `scripts/run_mcp.sh` (chemin absolu). Le wrapper source `secrets.env` (`chmod 600`) hors dépôt et, sans identifiants, bascule automatiquement en mode offline (fixtures).
 
 ### Vérifications utiles
 
@@ -76,6 +76,6 @@ make client-config          # or: uv run grand-lyon-mcp client-config
 Never put credentials in the client config.
 
 - **Option A**: inherit `DATAGRANDLYON_USERNAME` / `DATAGRANDLYON_PASSWORD` from the parent process.
-- **Option B**: `scripts/run_mcp.sh` sourcing `secrets.env` (`chmod 600`) — falls back to offline mode without credentials.
+- **Option B**: `scripts/run_mcp.sh` sourcing `secrets.env` (`chmod 600`): falls back to offline mode without credentials.
 
 Logs go to stderr; stdout is MCP-only.

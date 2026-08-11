@@ -1,4 +1,4 @@
-# ADR 0003 — Stockage SQLite + migrations SQL
+# ADR 0003: Stockage SQLite + migrations SQL
 
 ## Statut
 Accepté (2026-07-19)

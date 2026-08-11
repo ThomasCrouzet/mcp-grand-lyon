@@ -155,7 +155,7 @@ class PlaceService:
         # 4) Photon if weak / non-exact local matches (GTFS often floods partial stop names)
         nq_pre = normalize_name(q)
         exact_local = [c for c in candidates if normalize_name(c.name) == nq_pre]
-        # Always ask Photon when no exact local hit — GTFS partial matches are often noise
+        # Always ask Photon when no exact local hit: GTFS partial matches are often noise
         # (e.g. many "… Tête d'Or …" stops vs the actual park POI).
         if self._photon is not None and not exact_local:
             try:

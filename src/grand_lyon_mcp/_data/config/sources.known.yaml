@@ -28,7 +28,7 @@ tables:
     table_name: pvo_patrimoine_voirie.pvoparking
     status: OK
     attribution: Métropole de Lyon
-    notes: "Patrimoine / capacité — pas de places libres inventées"
+    notes: "Patrimoine / capacité: pas de places libres inventées"
   parking_realtime:
     service: grandlyon
     table_name: pvo_patrimoine_voirie.pvoparking

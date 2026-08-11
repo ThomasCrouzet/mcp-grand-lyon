@@ -88,7 +88,7 @@ def _facility_label(row: dict[str, Any]) -> str:
 
 
 def _line_matches(line: str, line_name: str, line_id: str = "") -> bool:
-    """Strict line match — avoid substring false positives ('A' in 'ActIV...')."""
+    """Strict line match, avoid substring false positives ('A' in 'ActIV...')."""
     from grand_lyon_mcp.domain.transit_line import line_matches
 
     return line_matches(line, line_name, line_id)
@@ -211,7 +211,7 @@ class LiveTransitRealtime:
         deps: list[Departure] = []
         stop_lat, stop_lon, stop_name = await self._resolve_stop_meta(stop_id)
 
-        # 1) SIRI EstimatedTimetable — filter by stop then line (never unfiltered on empty)
+        # 1) SIRI EstimatedTimetable: filter by stop then line (never unfiltered on empty)
         if self._siri is not None:
             try:
                 siri_deps = await self._siri.estimated_timetable()
@@ -242,7 +242,7 @@ class LiveTransitRealtime:
                     filtered = by_dir
             deps.extend(filtered[: limit * 2])
 
-        # 2) DataPusher passages — only rows that can be tied to the stop
+        # 2) DataPusher passages: only rows that can be tied to the stop
         if len(deps) < limit:
             try:
                 rows = await query_table(
@@ -706,7 +706,7 @@ class LiveTraffic:
             ):
                 # keep if no area filter match on commune
                 if area.lower() not in str(row.get("descripchantierinternet") or "").lower():
-                    pass  # still include — area filter soft
+                    pass  # still include, area filter soft
             out.append(
                 RoadEvent(
                     id=str(row.get("gid") or i),
@@ -834,7 +834,7 @@ class LiveWaste:
             # déchèteries acceptent la plupart des flux spéciaux
             accepted: list[WasteCategory] = [category] if category != WasteCategory.UNKNOWN else []
             if category == WasteCategory.HOUSEHOLD_WASTE and "ordure" not in allowed_raw.lower():
-                # still list — municipal facilities
+                # still list: municipal facilities
                 pass
             out.append(
                 WasteFacility(

@@ -230,7 +230,7 @@ def stop_matches(
     If neither identity nor coordinates can be checked, returns False (honest empty → GTFS).
     """
     if not requested_stop_id and ref_lat is None:
-        return True  # no stop context — do not invent filter
+        return True  # no stop context, do not invent filter
 
     want = stop_id_tokens(requested_stop_id)
     # Identity: StopPointRef / stop name

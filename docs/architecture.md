@@ -4,11 +4,11 @@
 
 Couches strictes :
 
-1. **adapters/mcp** — SDK MCP, enregistrement des 10 outils, sérialisation d’enveloppes
-2. **services** — logique métier, injection des providers
-3. **domain** — modèles Pydantic, protocoles, pure geo/errors
-4. **providers** — DataGrandLyon, Photon, GTFS, SIRI, Transitous (optionnel)
-5. **storage / infrastructure** — SQLite, cache HTTP, logs stderr, redaction, retry
+1. **adapters/mcp**: SDK MCP, enregistrement des 10 outils, sérialisation d’enveloppes
+2. **services**: logique métier, injection des providers
+3. **domain**: modèles Pydantic, protocoles, pure geo/errors
+4. **providers**: DataGrandLyon, Photon, GTFS, SIRI, Transitous (optionnel)
+5. **storage / infrastructure**: SQLite, cache HTTP, logs stderr, redaction, retry
 
 Règles :
 

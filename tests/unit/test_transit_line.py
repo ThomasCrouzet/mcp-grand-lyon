@@ -24,7 +24,7 @@ def test_normalize_siri_lineref() -> None:
 
 
 def test_line_matches_strict_not_substring() -> None:
-    # Naive '"a" in "ActIV..."' would be true — we must reject
+    # Naive '"a" in "ActIV..."' would be true: we must reject
     assert not line_matches("A", line_name="C12", line_id="ActIV:Line::C12:SYTRAL")
     assert line_matches("A", line_name="A", line_id="ActIV:Line::A:SYTRAL")
     assert line_matches("a", line_name="A", line_id="tcl:A")

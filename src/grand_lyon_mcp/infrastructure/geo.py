@@ -10,7 +10,7 @@ __all__ = ["Point", "bounding_box", "haversine_m", "normalize_name", "to_wgs84"]
 def to_wgs84(x: float, y: float, source_crs: str) -> tuple[float, float]:
     """Convert coordinates to WGS84 (lon, lat). Identity if already EPSG:4326."""
     if source_crs in ("EPSG:4326", "CRS84", "WGS84", "ogc:1.3:CRS84"):
-        # Assume input is lon, lat for CRS84 / lat,lon varies — callers pass lon,lat
+        # Assume input is lon, lat for CRS84 / lat,lon varies: callers pass lon,lat
         return x, y
     from pyproj import Transformer
 

@@ -154,7 +154,7 @@ Le wrapper `scripts/run_mcp.sh` charge `secrets.env` hors dépôt et bascule en 
 
 Aucun outil admin / requête brute DataGrandLyon n’est exposé. Arguments détaillés et exemples d’entrée/sortie : [`docs/tools.md`](docs/tools.md).
 
-Exemple — `lyon_next_departures` :
+Exemple; `lyon_next_departures` :
 
 ```jsonc
 // entrée
@@ -206,11 +206,11 @@ Tests live : `RUN_LIVE_TESTS=1` + credentials. La suite par défaut tourne **san
 
 - **100 % local, aucune télémétrie.** Le serveur tourne sur votre machine ; les profils (domicile/travail), briefings et l’historique Vélo’v restent dans une base SQLite locale.
 - **Ce qui quitte la machine** (mode live uniquement) : les requêtes et coordonnées nécessaires au géocodage et au calcul d’itinéraire sont envoyées aux services concernés (DataGrandLyon, instance Photon de la Métropole, Transitous si activé), soumis à leurs propres politiques.
-- Les profils d’exemple (`profiles.example.yaml`) n’utilisent que des lieux génériques (Bellecour, Lyon 3ᵉ) — aucune donnée personnelle réelle n’est versionnée.
+- Les profils d’exemple (`profiles.example.yaml`) n’utilisent que des lieux génériques (Bellecour, Lyon 3ᵉ): aucune donnée personnelle réelle n’est versionnée.
 
 ## Licence & attribution
 
-Code sous licence **MIT** (voir [`LICENSE`](LICENSE)). Les données proviennent de sources tierces avec leurs propres licences et obligations d’attribution — voir [`ATTRIBUTIONS.md`](ATTRIBUTIONS.md) et [`docs/data-sources.md`](docs/data-sources.md).
+Code sous licence **MIT** (voir [`LICENSE`](LICENSE)). Les données proviennent de sources tierces avec leurs propres licences et obligations d’attribution, voir [`ATTRIBUTIONS.md`](ATTRIBUTIONS.md) et [`docs/data-sources.md`](docs/data-sources.md).
 
 > Projet **indépendant**, non affilié à la Métropole de Lyon, SYTRAL Mobilités, Keolis-TCL ni JCDecaux. « TCL », « Vélo’v » et les autres noms cités sont des marques de leurs titulaires respectifs, employées ici de façon purement descriptive.
 
@@ -231,7 +231,7 @@ uv run grand-lyon-mcp doctor
 uv run grand-lyon-mcp serve --transport stdio
 ```
 
-Credentials via env only (`DATAGRANDLYON_USERNAME` / `DATAGRANDLYON_PASSWORD`) — never committed, logged, or returned by tools. Application logs go to **stderr**; **stdout** is MCP protocol only. Run without credentials → offline mode (fixtures).
+Credentials via env only (`DATAGRANDLYON_USERNAME` / `DATAGRANDLYON_PASSWORD`), never committed, logged, or returned by tools. Application logs go to **stderr**; **stdout** is MCP protocol only. Run without credentials → offline mode (fixtures).
 
 ### Connect a client
 

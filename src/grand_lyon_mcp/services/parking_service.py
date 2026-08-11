@@ -1,4 +1,4 @@
-"""Parking options service — honest about availability provenance."""
+"""Parking options service, honest about availability provenance."""
 
 from __future__ import annotations
 

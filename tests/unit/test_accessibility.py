@@ -125,7 +125,7 @@ async def test_incident_reflected_on_stop() -> None:
 
 @pytest.mark.asyncio
 async def test_gtfs_wheelchair_declarative_not_accessible() -> None:
-    """wheelchair_boarding=1 is declarative only — never silent full accessible."""
+    """wheelchair_boarding=1 is declarative only, never silent full accessible."""
     svc = AccessibilityService(
         places=_FakePlaces(),
         provider=_EmptyProvider(),

@@ -1,4 +1,4 @@
-# ADR 0002 — Version du SDK MCP Python
+# ADR 0002: Version du SDK MCP Python
 
 ## Statut
 Accepté (2026-07-19)
