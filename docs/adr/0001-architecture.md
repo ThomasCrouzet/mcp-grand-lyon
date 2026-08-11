@@ -1,4 +1,4 @@
-# ADR 0001 — Architecture en couches
+# ADR 0001: Architecture en couches
 
 ## Statut
 Accepté (2026-07-19)

@@ -1,4 +1,4 @@
-"""Live tests — require RUN_LIVE_TESTS=1 and credentials."""
+"""Live tests, require RUN_LIVE_TESTS=1 and credentials."""
 
 from __future__ import annotations
 

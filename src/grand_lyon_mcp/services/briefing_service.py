@@ -47,7 +47,7 @@ class BriefingService:
         at = at or generated
         cfg = await self._profiles.get_briefing_profile(profile)
         if cfg is None:
-            # try load defaults from empty — not found
+            # try load defaults from empty: not found
             return make_envelope(
                 status=ResultStatus.NOT_FOUND,
                 generated_at=generated,
@@ -65,7 +65,7 @@ class BriefingService:
             facts["commute"] = commute
             if commute and self._transit and "transit" in include:
                 origin = PlaceRef(profile_place=str(commute.get("origin") or "home"))
-                # use work-area stop query if available — resolve home and get departures near
+                # use work-area stop query if available: resolve home and get departures near
                 try:
                     home = await self._profiles.get_place(str(commute.get("origin") or "home"))
                     if home and home.get("latitude") is not None:
@@ -80,7 +80,7 @@ class BriefingService:
                         facts["departures"] = dep_env.data
                         warnings.extend(dep_env.warnings)
                     else:
-                        # try Bellecour as demo fallback only if no coords — actually skip
+                        # try Bellecour as demo fallback only if no coords: actually skip
                         pass
                 except Exception:
                     warnings.append(
@@ -158,7 +158,7 @@ class BriefingService:
                 if isinstance(raw, list):
                     alerts = raw
             summary_parts.append(f"{len(alerts)} alerte(s)")
-        summary = " — ".join(summary_parts) + "."
+        summary = ": ".join(summary_parts) + "."
 
         return make_envelope(
             status=ResultStatus.PARTIAL if warnings else ResultStatus.OK,

@@ -29,7 +29,7 @@ uv run pytest tests/unit/test_waste.py::test_classify_battery -q
 
 ## Règles
 
-1. **Tests offline par défaut** — un `pytest` nu doit passer sans réseau ni identifiants.
+1. **Tests offline par défaut**: un `pytest` nu doit passer sans réseau ni identifiants.
 2. Le **domaine n’importe jamais** le SDK MCP, `httpx` ni `aiosqlite` (cf. `docs/architecture.md`).
 3. `ruff` + `mypy --strict` doivent rester verts. Pas de `type: ignore` ni de `except Exception` silencieux non justifiés.
 4. **Jamais de secret** dans un commit, une fixture, un log ou une sortie MCP.

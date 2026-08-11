@@ -234,7 +234,7 @@ class JourneyService:
                                         walking_m=opt.walking_distance_m or 400,
                                     ),
                                     "summary": (
-                                        opt.summary or "TCL (durée non disponible — non calculée)"
+                                        opt.summary or "TCL (durée non disponible, non calculée)"
                                     ),
                                 }
                             )
@@ -263,7 +263,7 @@ class JourneyService:
                             availability=0.4,
                         ),
                         estimated_duration_seconds=None,  # never invent
-                        summary="TCL (durée non disponible — routeur indisponible)",
+                        summary="TCL (durée non disponible: routeur indisponible)",
                         realtime=False,
                         sources=[],
                     )

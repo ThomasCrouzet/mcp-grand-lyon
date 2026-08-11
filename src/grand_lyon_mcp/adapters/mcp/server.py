@@ -1,4 +1,4 @@
-"""MCP stdio server — only place that imports the MCP SDK."""
+"""MCP stdio server, only place that imports the MCP SDK."""
 
 from __future__ import annotations
 
@@ -259,7 +259,7 @@ def _banner_stderr(app: AppContainer) -> None:
     mode = "offline (fixtures)" if settings.offline else "live"
     creds = "oui" if settings.has_credentials() else "non"
     lines = [
-        f"grand-lyon-mcp v{__version__} — serveur MCP stdio prêt",
+        f"grand-lyon-mcp v{__version__}, serveur MCP stdio prêt",
         f"  mode          : {mode}",
         f"  credentials   : {creds}",
         f"  outils        : {len(PUBLIC_TOOL_NAMES)} ({', '.join(PUBLIC_TOOL_NAMES[:3])}, …)",

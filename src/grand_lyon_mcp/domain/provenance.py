@@ -45,7 +45,7 @@ def theoretical_provenance(
     retrieved_at: datetime,
     license_name: str = "unknown",
 ) -> SourceProvenance:
-    """GTFS / static fallback — never marked realtime."""
+    """GTFS / static fallback, never marked realtime."""
     return SourceProvenance(
         provider=provider,
         source_id=source_id,

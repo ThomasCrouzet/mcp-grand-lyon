@@ -1,4 +1,4 @@
-"""Accessibility check service — absence of data is never 'accessible'."""
+"""Accessibility check service, absence of data is never 'accessible'."""
 
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ class AccessibilityService:
                             }
                         )
 
-            # Layer 3: GTFS wheelchair_boarding — declarative only, never silent accessible
+            # Layer 3: GTFS wheelchair_boarding: declarative only, never silent accessible
             wh = await _gtfs_wheelchair(self._gtfs, stop_id)
             if wh is not None:
                 # GTFS: 0=no info, 1=some accessible, 2=not accessible
@@ -185,7 +185,7 @@ class AccessibilityService:
                     if status == AccessibilityStatus.UNKNOWN:
                         status = AccessibilityStatus.PARTIALLY_ACCESSIBLE
                         notes_parts.append(
-                            "GTFS : accessibilité déclarative partielle — non confirmée live."
+                            "GTFS : accessibilité déclarative partielle, non confirmée live."
                         )
                     else:
                         notes_parts.append("GTFS wheelchair_boarding=1 (déclaratif).")

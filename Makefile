@@ -1,4 +1,4 @@
-# grand-lyon-mcp — commandes de développement et d'installation
+# grand-lyon-mcp: commandes de développement et d'installation
 #
 #   make help          liste les cibles
 #   make setup         assistant TUI (recommandé pour démarrer)
@@ -12,7 +12,7 @@ UV          := uv
 RUN         := $(UV) run
 CLI         := $(RUN) grand-lyon-mcp
 WRAPPER     := $(ROOT)/scripts/run_mcp.sh
-# platformdirs : Linux ~/.config/… — macOS ~/Library/Application Support/…
+# platformdirs : Linux ~/.config/…: macOS ~/Library/Application Support/…
 SECRETS_FILE ?= $(HOME)/.config/grand-lyon-mcp/secrets.env
 SECRETS_FILE_MACOS ?= $(HOME)/Library/Application Support/grand-lyon-mcp/secrets.env
 
@@ -37,7 +37,7 @@ endef
 ##@ Démarrage
 
 help: ## Affiche cette aide
-	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mgrand-lyon-mcp\033[0m — cibles Make\n\n"} \
+	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mgrand-lyon-mcp\033[0m, cibles Make\n\n"} \
 		/^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)} \
 		/^[a-zA-Z0-9_-]+:.*?##/ {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
@@ -103,7 +103,7 @@ doctor: ## Diagnostic installation (sans fuite de secrets)
 
 serve: ## Serveur MCP stdio (silencieux = normal ; infos sur stderr)
 	@echo "→ Démarrage MCP stdio (bandeau sur stderr)."
-	@echo "  stdout = protocole JSON pour le client MCP — pas de prompt interactif."
+	@echo "  stdout = protocole JSON pour le client MCP, pas de prompt interactif."
 	@echo "  Test local des outils : make smoke"
 	@echo "  Config client MCP     : make client-config"
 	@echo "  Arrêt                 : Ctrl+C"

@@ -98,7 +98,7 @@ class EntityRepository:
         return _row_to_candidate(row)
 
     async def search_fts(self, query: str, *, limit: int = 10) -> list[PlaceCandidate]:
-        # FTS5 MATCH — use prefix / plain tokens.
+        # FTS5 MATCH: use prefix / plain tokens.
         # On retire les guillemets doubles de chaque token : sans cela une entrée
         # contenant `"` produirait une requête MATCH malformée (OperationalError) et
         # permettrait d'injecter la mini-syntaxe FTS5.

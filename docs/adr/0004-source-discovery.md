@@ -1,4 +1,4 @@
-# ADR 0004 — Découverte des sources DataGrandLyon
+# ADR 0004: Découverte des sources DataGrandLyon
 
 ## Statut
 Accepté (2026-07-19)

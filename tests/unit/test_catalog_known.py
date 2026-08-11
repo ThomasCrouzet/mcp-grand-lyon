@@ -40,6 +40,6 @@ def test_doctor_uses_classify_helper() -> None:
     text = cli.read_text(encoding="utf-8")
     assert "classify_catalog_http_status" in text
     assert "--mode" in text
-    # runtime assertion — not grep-only
+    # runtime assertion: not grep-only
     assert classify_catalog_http_status(403)["catalog_list"] == "FORBIDDEN"
     assert classify_catalog_http_status(403)["auth"] == "OK"

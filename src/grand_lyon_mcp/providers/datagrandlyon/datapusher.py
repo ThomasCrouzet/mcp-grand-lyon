@@ -1,4 +1,4 @@
-"""DataPusher query adapter (internal only — never exposed as MCP tool)."""
+"""DataPusher query adapter (internal only, never exposed as MCP tool)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ async def query_table(
     start: int = 0,
     filters: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Bounded query — filters must come from internal allowlists only."""
+    """Bounded query, filters must come from internal allowlists only."""
     params: dict[str, Any] = {
         "compact": "false",
         "maxfeatures": max(1, min(maxfeatures, 200)),

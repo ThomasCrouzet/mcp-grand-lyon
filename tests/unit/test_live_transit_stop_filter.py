@@ -64,7 +64,7 @@ def test_filter_by_stop_drops_wrong_stop() -> None:
     deps = [
         _dep(line="A", stop_ref="Bellecour"),
         _dep(line="A", stop_ref="Part-Dieu"),
-        _dep(line="C12", stop_ref=None),  # unknown stop — drop
+        _dep(line="C12", stop_ref=None),  # unknown stop, drop
     ]
     kept = filter_departures_by_stop(deps, "Bellecour")
     assert len(kept) == 1
@@ -83,7 +83,7 @@ def test_strict_line_empty_does_not_restore_unfiltered() -> None:
         _dep(line="C12", stop_ref="Bellecour", dest="Sathonay"),
     ]
     by_line = filter_departures_by_line(deps, "A")
-    # shipped live path must use by_line as-is when empty — never fall back to deps
+    # shipped live path must use by_line as-is when empty: never fall back to deps
     filtered = by_line  # correct
     wrong = by_line if by_line else deps  # old buggy pattern
     assert filtered == []
@@ -131,7 +131,7 @@ def test_siri_parser_preserves_stop_ref() -> None:
 
 @pytest.mark.asyncio
 async def test_live_transit_provider_filters_stop_and_line() -> None:
-    """Drive LiveTransitRealtime.get_departures with mocked SIRI — real shipped class."""
+    """Drive LiveTransitRealtime.get_departures with mocked SIRI, real shipped class."""
 
     class _FakeSiri:
         async def estimated_timetable(self) -> list[Departure]:

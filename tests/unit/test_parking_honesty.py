@@ -35,7 +35,7 @@ class _FakePlaces:
 
 
 class _CapacityOnlyProvider:
-    """Public parking with capacity only — must not invent available_spaces."""
+    """Public parking with capacity only, must not invent available_spaces."""
 
     live_dispo_resolved = False
 
