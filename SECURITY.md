@@ -21,6 +21,14 @@ de reproduction et l’impact estimé.
 
 - **Credentials** : uniquement via variables d’environnement (`DATAGRANDLYON_USERNAME` / `DATAGRANDLYON_PASSWORD`) ; jamais dans le dépôt, les logs, les erreurs, les fixtures ou les sorties MCP. HTTP Basic uniquement sur HTTPS via `httpx` (identifiants en en-tête, jamais dans l’URL).
 - **Réseau** : allowlist de hosts appliquée à chaque requête sortante, y compris les cibles de redirections 3xx (anti-SSRF). Redaction systématique (`Authorization`, mots de passe, tokens…) dans les logs et exceptions.
+
+HTTP requests require an allowed HTTPS host on port 443.
+Redirects use the same policy and cannot restore credentials that HTTPX removed.
+Normal responses have an 8 MiB byte limit and a 60-second total deadline.
+The client requests identity encoding and rejects compressed HTTP bodies before decompression.
+GTFS downloads use a 300 MiB limit and atomic file publication.
+See [the HTTP transfer decision](docs/adr/0005-bounded-http-transfers.md).
+
 - **Surface MCP** : outils en lecture seule uniquement ; aucun outil n’accepte d’URL, de SQL/CQL ni de filtre brut DataGrandLyon. Entrées validées par Pydantic (`extra="forbid"`, bornes strictes).
 - **Hors garantie** : désactiver la vérification TLS (`GRAND_LYON_MCP_VERIFY_TLS=false` / `network.verify_tls: false`) expose les identifiants à une interception (MITM) et n’est pas couvert. Fournir une source (`TRANSITOUS_BASE_URL`) ou un fichier GTFS (`--from-file`) hors des hosts/sources de confiance sort du modèle de menace.
 
