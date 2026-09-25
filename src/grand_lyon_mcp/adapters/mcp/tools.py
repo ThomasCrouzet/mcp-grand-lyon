@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from grand_lyon_mcp.domain.common import PlaceRef
+from grand_lyon_mcp.domain.parking import ParkingType
 from grand_lyon_mcp.infrastructure.logging import get_logger
 
 logger = get_logger("tools")
@@ -83,7 +84,7 @@ class TripOptionsInput(StrictModel):
 
 class ParkingOptionsInput(StrictModel):
     destination: PlaceRef
-    types: list[str] | None = Field(default=None, max_length=5)
+    types: list[ParkingType] | None = Field(default=None, max_length=5)
     radius_m: int = Field(default=1500, ge=50, le=5000)
     minimum_spaces: int = Field(default=0, ge=0, le=500)
     limit: int = Field(default=10, ge=1, le=20)
@@ -250,7 +251,7 @@ async def dispatch_tool(app: Any, name: str, arguments: dict[str, Any]) -> dict[
             assert isinstance(p, ParkingOptionsInput)
             result = await app.parking.options(
                 destination=p.destination,
-                types=p.types,
+                types=[kind.value for kind in p.types] if p.types is not None else None,
                 radius_m=p.radius_m,
                 minimum_spaces=p.minimum_spaces,
                 limit=p.limit,

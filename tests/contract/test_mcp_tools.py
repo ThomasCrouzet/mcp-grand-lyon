@@ -101,6 +101,24 @@ async def test_reject_unknown_via_dispatch(app_container) -> None:
 
 
 @pytest.mark.asyncio
+async def test_parking_type_errors_are_invalid_requests(app_container) -> None:
+    invalid = await dispatch_tool(
+        app_container,
+        "lyon_parking_options",
+        {"destination": {"query": "Hôtel de Ville"}, "types": ["unsupported"]},
+    )
+    assert invalid["status"] == "invalid_request"
+    valid = await dispatch_tool(
+        app_container,
+        "lyon_parking_options",
+        {"destination": {"query": "Hôtel de Ville"}, "types": ["public_parking"]},
+    )
+    assert valid["status"] in {"ok", "partial"}
+    assert valid["data"]["options"]
+    assert all(option["type"] == "public_parking" for option in valid["data"]["options"])
+
+
+@pytest.mark.asyncio
 async def test_tool_input_schemas_stable(app_container) -> None:
     """Verrouille les arguments exposés (noms + required) contre une dérive d'API MCP."""
     from grand_lyon_mcp.adapters.mcp.server import create_mcp_server
