@@ -26,20 +26,3 @@ def test_known_tables_fallback_when_missing(tmp_path: Path) -> None:
     tables = load_known_source_tables(tmp_path / "missing.yaml")
     assert "velov_realtime" in tables
     assert tables["velov_realtime"]["service"] == "rdata"
-
-
-def test_doctor_uses_classify_helper() -> None:
-    """Doctor path wires classify_catalog_http_status (runtime contract)."""
-    from pathlib import Path
-
-    from grand_lyon_mcp.providers.datagrandlyon.catalog_scan import (
-        classify_catalog_http_status,
-    )
-
-    cli = Path(__file__).resolve().parents[2] / "src" / "grand_lyon_mcp" / "cli.py"
-    text = cli.read_text(encoding="utf-8")
-    assert "classify_catalog_http_status" in text
-    assert "--mode" in text
-    # runtime assertion: not grep-only
-    assert classify_catalog_http_status(403)["catalog_list"] == "FORBIDDEN"
-    assert classify_catalog_http_status(403)["auth"] == "OK"

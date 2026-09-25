@@ -8,7 +8,6 @@ import pytest
 
 from grand_lyon_mcp.domain.transit import Departure
 from grand_lyon_mcp.domain.transit_line import (
-    filter_departures_by_line,
     filter_departures_by_stop,
     stop_matches,
 )
@@ -74,21 +73,6 @@ def test_filter_by_stop_drops_wrong_stop() -> None:
         (d.stop_ref or "").lower().find("part") < 0 or "bellecour" in (d.stop_ref or "").lower()
         for d in kept
     )
-
-
-def test_strict_line_empty_does_not_restore_unfiltered() -> None:
-    """Mirrors LiveTransitRealtime: empty by_line stays empty."""
-    deps = [
-        _dep(line="C12", stop_ref="Bellecour"),
-        _dep(line="C12", stop_ref="Bellecour", dest="Sathonay"),
-    ]
-    by_line = filter_departures_by_line(deps, "A")
-    # shipped live path must use by_line as-is when empty: never fall back to deps
-    filtered = by_line  # correct
-    wrong = by_line if by_line else deps  # old buggy pattern
-    assert filtered == []
-    assert wrong  # documents the bug we removed
-    assert filtered != wrong
 
 
 def test_siri_parser_preserves_stop_ref() -> None:

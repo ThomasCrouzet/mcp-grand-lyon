@@ -8,10 +8,6 @@ from pydantic import ValidationError
 from grand_lyon_mcp.settings import JourneyScoringWeights, Settings
 
 
-def test_weights_sum() -> None:
-    JourneyScoringWeights()
-
-
 def test_weights_bad_sum() -> None:
     with pytest.raises(ValidationError):
         JourneyScoringWeights(duration=1.0, reliability=1.0)

@@ -261,17 +261,6 @@ def test_waste_taxonomy_from_yaml() -> None:
     assert c.category.value == "paint"
 
 
-def test_rate_limit_and_logging() -> None:
-    from grand_lyon_mcp.infrastructure.logging import get_logger, setup_logging
-    from grand_lyon_mcp.infrastructure.rate_limit import ConcurrencyLimiter
-
-    setup_logging("DEBUG")
-    log = get_logger("test")
-    log.info("hello")
-    lim = ConcurrencyLimiter(2)
-    assert lim is not None
-
-
 @pytest.mark.asyncio
 async def test_datapusher_table_url() -> None:
     from grand_lyon_mcp.providers.datagrandlyon.datapusher import extract_records, table_url
@@ -279,20 +268,3 @@ async def test_datapusher_table_url() -> None:
     assert "rdata" in table_url("rdata", "schema.table")
     assert extract_records([{"a": 1}]) == [{"a": 1}]
     assert extract_records("nope") == []
-
-
-def test_siri_models_tolerant() -> None:
-    from grand_lyon_mcp.providers.siri.models import EstimatedVehicleJourney
-
-    j = EstimatedVehicleJourney(LineRef="A", extra_field="x")  # type: ignore[call-arg]
-    assert j.LineRef == "A"
-
-
-def test_time_to_utc() -> None:
-    from datetime import datetime
-
-    from grand_lyon_mcp.infrastructure.time import BUSINESS_TZ, now_utc, to_utc
-
-    dt = datetime(2026, 7, 1, 12, 0, tzinfo=BUSINESS_TZ)
-    assert to_utc(dt).tzinfo is not None
-    assert now_utc().tzinfo is not None

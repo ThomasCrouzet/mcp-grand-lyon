@@ -52,7 +52,7 @@ redaction** avant de promouvoir une fixture dans le paquet.
 ## Flux de contribution
 
 1. Forkez et créez une branche (`feat/…`, `fix/…`).
-2. Implémentez + tests offline, gardez `make quality` vert.
+2. Follow the testing policy in `AGENTS.md`. Keep `make quality` successful.
 3. Ouvrez une Pull Request en décrivant le _pourquoi_. La CI (`ruff`/`mypy`/`pytest`/`build`) doit passer.
 4. Les commits peuvent être en français ou en anglais ; soyez descriptif.
 

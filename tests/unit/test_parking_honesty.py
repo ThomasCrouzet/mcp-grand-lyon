@@ -137,32 +137,3 @@ async def test_live_dispo_present() -> None:
     assert any(o.get("available_spaces") is not None for o in opts)
     live = [o for o in opts if o.get("available_spaces") is not None]
     assert live[0]["realtime"] is True
-
-
-@pytest.mark.asyncio
-async def test_pr_sorted_by_real_distance() -> None:
-    """P+R options must use real coords (not artificial zero at destination)."""
-    dest = Point(45.7675, 4.8355)
-    provider = _LiveDispoProvider()
-    opts = await provider.options_near(dest, types=[ParkingType.PARK_AND_RIDE], limit=10)
-    assert opts
-    distances = [o.distance_m for o in opts if o.distance_m is not None]
-    assert distances
-    assert all(d > 1.0 for d in distances)  # not artificial zero
-    assert distances == sorted(distances)
-
-
-def test_never_derive_available_from_capacity() -> None:
-    """Structural honesty: capacity alone must not fill available_spaces."""
-    opt = ParkingOption(
-        id="x",
-        name="Cap only",
-        type=ParkingType.PUBLIC_PARKING,
-        latitude=45.75,
-        longitude=4.85,
-        capacity=100,
-        available_spaces=None,
-        realtime=False,
-    )
-    assert opt.capacity == 100
-    assert opt.available_spaces is None

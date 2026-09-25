@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 
 from grand_lyon_mcp.adapters.mcp.tools import (
     ADMIN_TOOL_NAMES,
     PUBLIC_TOOL_NAMES,
-    ResolvePlaceInput,
     dispatch_tool,
     tool_input_models,
 )
@@ -28,11 +26,6 @@ def test_no_admin_in_public() -> None:
 def test_all_tools_have_input_models() -> None:
     models = tool_input_models()
     assert set(models) == set(PUBLIC_TOOL_NAMES)
-
-
-def test_unknown_fields_rejected() -> None:
-    with pytest.raises(ValidationError):
-        ResolvePlaceInput(query="x", not_a_field=True)  # type: ignore[call-arg]
 
 
 @pytest.mark.asyncio

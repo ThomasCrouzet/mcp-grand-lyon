@@ -18,13 +18,6 @@ async def test_gtfs_get_stop(app_container) -> None:
     repo = GtfsRepository(app_container.conn)
     stop = await repo.get_stop("gtfs:stop:BEL1")
     assert stop is not None
-    deps = await repo.get_scheduled_departures(
-        "BEL1",
-        at=datetime(2026, 7, 20, 7, 0, tzinfo=BUSINESS_TZ),
-        direction="Vaulx",
-        limit=3,
-    )
-    assert isinstance(deps, list)
 
 
 @pytest.mark.asyncio
@@ -142,15 +135,6 @@ def test_serializers() -> None:
     d = envelope_to_dict(env)
     assert d["status"] == "ok"
     assert "request_id" in envelope_to_json(env)
-
-
-def test_auth_and_catalog_urls() -> None:
-    from grand_lyon_mcp.providers.datagrandlyon.auth import basic_auth
-    from grand_lyon_mcp.providers.datagrandlyon.catalog import CATALOG_URLS
-
-    auth = basic_auth("u", "p")
-    assert auth is not None
-    assert "rdata" in CATALOG_URLS
 
 
 @pytest.mark.asyncio

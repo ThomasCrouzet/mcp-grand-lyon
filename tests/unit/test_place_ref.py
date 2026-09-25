@@ -8,16 +8,6 @@ from pydantic import ValidationError
 from grand_lyon_mcp.domain.common import PlaceRef
 
 
-def test_query_ok() -> None:
-    p = PlaceRef(query="Part-Dieu")
-    assert p.query == "Part-Dieu"
-
-
-def test_coords_ok() -> None:
-    p = PlaceRef(latitude=45.75, longitude=4.85)
-    assert p.latitude == 45.75
-
-
 def test_reject_multiple_modes() -> None:
     with pytest.raises(ValidationError):
         PlaceRef(query="x", latitude=1.0, longitude=2.0)

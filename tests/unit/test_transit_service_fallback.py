@@ -158,5 +158,6 @@ async def test_gtfs_never_realtime_flag() -> None:
         line="A",
         at=datetime(2026, 7, 20, 8, 0, tzinfo=BUSINESS_TZ),
     )
+    assert env.data["departures"]
     for d in env.data["departures"]:
         assert d["realtime"] is False

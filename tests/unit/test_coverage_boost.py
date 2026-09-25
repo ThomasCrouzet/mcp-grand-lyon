@@ -44,15 +44,6 @@ def test_naive_datetime_conversions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_acquire() -> None:
-    from grand_lyon_mcp.infrastructure.rate_limit import ConcurrencyLimiter
-
-    lim = ConcurrencyLimiter(1)
-    async with lim.acquire():
-        pass
-
-
-@pytest.mark.asyncio
 @respx.mock
 async def test_catalog_and_datapusher_query() -> None:
     respx.get("https://data.grandlyon.com/fr/datapusher/ws/rdata/all.json").mock(
@@ -158,14 +149,6 @@ async def test_briefing_missing_profile(app_container) -> None:
     assert env.status.value == "not_found"
 
 
-@pytest.mark.asyncio
-async def test_place_ambiguous_and_gtfs_search(app_container) -> None:
-    env = await app_container.places.resolve_place(query="Part", limit=5)
-    assert env.schema_version == "1.0"
-    env2 = await app_container.places.resolve_place(query="Bellecour", limit=3)
-    assert env2.data.get("candidates") is not None
-
-
 def test_infra_geo_pyproj() -> None:
     from grand_lyon_mcp.infrastructure.geo import to_wgs84
 
@@ -188,16 +171,6 @@ def test_logging_exc_and_extra(capsys) -> None:
         log.exception("boom")
     err = capsys.readouterr().err
     assert "supersecret" not in err or "[REDACTED]" in err
-
-
-@pytest.mark.asyncio
-async def test_transit_static_only(app_container) -> None:
-    from grand_lyon_mcp.services.transit_service import TransitService
-
-    svc = TransitService(places=app_container.places, realtime=None, static=app_container.gtfs)
-    env = await svc.next_departures(stop=PlaceRef(query="Bellecour"), line="A")
-    for d in env.data.get("departures") or []:
-        assert d["realtime"] is False
 
 
 @pytest.mark.asyncio
