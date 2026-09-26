@@ -28,22 +28,15 @@ jobs:
           enable-cache: true
       - name: Sync (locked)
         run: uv sync --locked --all-extras --dev
-      - name: Ruff format
-        run: uv run ruff format --check .
-      - name: Ruff check
-        run: uv run ruff check .
-      - name: Mypy
-        run: uv run mypy src
-      - name: Pytest (offline)
-        run: uv run pytest -m "not live" --cov --cov-report=term-missing --cov-report=xml
-        env:
-          GRAND_LYON_MCP_OFFLINE: "true"
-      - name: Upload coverage artifact
-        if: matrix.python-version == '3.12'
+      - name: Offline quality gate with evidence
+        run: uv run --no-sync python scripts/verify_quality.py --artifact-dir "$RUNNER_TEMP/quality-evidence"
+      - name: Upload quality evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-xml
-          path: coverage.xml
+          name: quality-python-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/quality-evidence
+          if-no-files-found: error
 
   build:
     runs-on: ubuntu-latest
@@ -57,20 +50,26 @@ jobs:
           enable-cache: false
       - name: Build wheel + sdist
         run: uv build
-      - name: Install wheel in a clean venv and smoke-test (offline, out of tree)
+      - name: Verify installed wheel through MCP stdio and CLI
         run: |
           set -euo pipefail
-          WHEEL=$(ls dist/*.whl | head -1)
-          python -m venv /tmp/venv
-          /tmp/venv/bin/pip install --upgrade pip >/dev/null
-          /tmp/venv/bin/pip install "$WHEEL"
-          cd /tmp                                  # hors du checkout : valide les données empaquetées
-          export GRAND_LYON_MCP_OFFLINE=true
-          export GRAND_LYON_MCP_CONFIG_DIR=/tmp/glm-cfg
-          export GRAND_LYON_MCP_DATA_DIR=/tmp/glm-data
-          /tmp/venv/bin/grand-lyon-mcp version
-          /tmp/venv/bin/grand-lyon-mcp db migrate
-          /tmp/venv/bin/grand-lyon-mcp smoke --tool lyon_resolve_place
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --no-project --python 3.12 python scripts/verify_wheel.py \
+            --wheel "${wheels[0]}" --artifact-dir "$RUNNER_TEMP/wheel-evidence"
+        env:
+          UV_CONCURRENT_BUILDS: "1"
+          UV_CONCURRENT_DOWNLOADS: "2"
+          UV_CONCURRENT_INSTALLS: "2"
+      - name: Upload protocol evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-protocol-evidence
+          path: |
+            ${{ runner.temp }}/wheel-evidence
+            !${{ runner.temp }}/wheel-evidence/venv/**
+          if-no-files-found: error
       - name: Upload distributions
         uses: actions/upload-artifact@v7
         with:

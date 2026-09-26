@@ -10,8 +10,8 @@ from grand_lyon_mcp.domain.common import (
     WarningItem,
     make_envelope,
 )
-from grand_lyon_mcp.domain.geo import Point
-from grand_lyon_mcp.domain.parking import ParkingType
+from grand_lyon_mcp.domain.geo import Point, haversine_m
+from grand_lyon_mcp.domain.parking import ParkingStatus, ParkingType
 from grand_lyon_mcp.domain.protocols import ParkingProvider
 from grand_lyon_mcp.infrastructure.time import now_paris
 from grand_lyon_mcp.services.place_service import PlaceService
@@ -84,8 +84,29 @@ class ParkingService:
                 degraded=True,
             )
 
+        # Enforce the public constraints even if a provider returns a loose set.
+        filtered = []
+        for option in options:
+            distance = haversine_m(point, Point(option.latitude, option.longitude))
+            if distance > radius_m or (ptypes and option.type not in ptypes):
+                continue
+            if option.available_spaces is not None and option.available_spaces < minimum_spaces:
+                continue
+            option = option.model_copy(update={"distance_m": distance})
+            if option.available_spaces is None:
+                option = option.model_copy(
+                    update={
+                        "realtime": False,
+                        "availability_ratio": None,
+                        "status": ParkingStatus.CLOSED
+                        if option.status == ParkingStatus.CLOSED
+                        else ParkingStatus.UNKNOWN,
+                    }
+                )
+            filtered.append(option)
+        options = filtered[:limit]
         has_live = any(o.available_spaces is not None for o in options)
-        capacity_only = any(o.capacity is not None and o.available_spaces is None for o in options)
+        missing_availability = any(o.available_spaces is None for o in options)
         if options and not has_live:
             warnings.append(
                 WarningItem(
@@ -98,7 +119,7 @@ class ParkingService:
                     retryable=True,
                 )
             )
-        elif capacity_only and has_live:
+        elif missing_availability and has_live:
             warnings.append(
                 WarningItem(
                     code=WarningCode.PARTIAL_RESULT.value,

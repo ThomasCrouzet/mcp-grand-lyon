@@ -289,9 +289,9 @@ def _banner_stderr(app: AppContainer) -> None:
 async def run_stdio() -> None:
     """Entry for `grand-lyon-mcp serve --transport stdio`."""
     app = await build_app()
-    _banner_stderr(app)
-    mcp = create_mcp_server(app)
     try:
+        _banner_stderr(app)
+        mcp = create_mcp_server(app)
         await mcp.run_stdio_async()
     finally:
         await app.aclose()

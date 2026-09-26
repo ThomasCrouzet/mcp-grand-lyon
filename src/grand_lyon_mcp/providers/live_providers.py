@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from time import monotonic
 from typing import Any
 
 from dateutil.parser import isoparse
@@ -97,12 +98,14 @@ def _line_matches(line: str, line_name: str, line_id: str = "") -> bool:
 class LiveVelovProvider:
     """Vélo'v realtime via DataPusher jcd_jcdecaux.jcdvelov."""
 
-    def __init__(self, dgl: DataGrandLyonClient) -> None:
+    def __init__(self, dgl: DataGrandLyonClient, *, cache_ttl_seconds: float = 45) -> None:
         self._dgl = dgl
         self._cache: list[VelovStation] | None = None
+        self._cache_ttl = max(0, cache_ttl_seconds)
+        self._cache_expires_at = 0.0
 
     async def _all(self) -> list[VelovStation]:
-        if self._cache is not None:
+        if self._cache is not None and monotonic() < self._cache_expires_at:
             return self._cache
         rows = await query_table(
             self._dgl,
@@ -133,6 +136,7 @@ class LiveVelovProvider:
                 )
             )
         self._cache = out
+        self._cache_expires_at = monotonic() + self._cache_ttl
         return out
 
     async def stations_near(
@@ -238,8 +242,7 @@ class LiveTransitRealtime:
                 # do NOT re-introduce unfiltered lines when empty
             if direction:
                 by_dir = [d for d in filtered if direction.lower() in (d.destination or "").lower()]
-                if by_dir:
-                    filtered = by_dir
+                filtered = by_dir
             deps.extend(filtered[: limit * 2])
 
         # 2) DataPusher passages: only rows that can be tied to the stop
@@ -457,16 +460,21 @@ class LiveParking:
         dgl: DataGrandLyonClient,
         *,
         entity_lookup: Any | None = None,
+        cache_ttl_seconds: float = 60,
     ) -> None:
         self._dgl = dgl
         self._entities = entity_lookup
         self._live_dispo_by_name: dict[str, int] | None = None
         self._live_dispo_ok: bool | None = None
+        self._cache_ttl = max(0, cache_ttl_seconds)
+        self._cache_expires_at = 0.0
+        self._live_observed_at: datetime | None = None
 
     async def _load_live_dispo(self) -> dict[str, int]:
         """Best-effort live availability map name → free spaces (OGC then DataPusher)."""
-        if self._live_dispo_by_name is not None:
+        if self._live_dispo_by_name is not None and monotonic() < self._cache_expires_at:
             return self._live_dispo_by_name
+        observed_at = now_paris()
         mapping: dict[str, int] = {}
         try:
             from grand_lyon_mcp.providers.datagrandlyon.ogc_features import fetch_items
@@ -495,6 +503,8 @@ class LiveParking:
             if mapping:
                 self._live_dispo_ok = True
                 self._live_dispo_by_name = mapping
+                self._live_observed_at = observed_at
+                self._cache_expires_at = monotonic() + self._cache_ttl
                 return mapping
         except Exception as exc:
             logger.debug(
@@ -525,6 +535,8 @@ class LiveParking:
                 break
         self._live_dispo_ok = bool(mapping)
         self._live_dispo_by_name = mapping
+        self._live_observed_at = observed_at
+        self._cache_expires_at = monotonic() + self._cache_ttl
         return mapping
 
     async def _geocode_pr(self, name: str) -> tuple[float, float] | None:
@@ -551,6 +563,7 @@ class LiveParking:
         allowed = set(types or [ParkingType.PUBLIC_PARKING, ParkingType.PARK_AND_RIDE])
         out: list[ParkingOption] = []
         live_map = await self._load_live_dispo()
+        live_observed_at = self._live_observed_at
 
         if ParkingType.PUBLIC_PARKING in allowed:
             try:
@@ -608,7 +621,11 @@ class LiveParking:
                         else ParkingStatus.FULL,
                         distance_m=d,
                         realtime=realtime,
-                        observed_at=now_paris(),
+                        observed_at=live_observed_at
+                        if live_val is not None
+                        else now_paris()
+                        if avail is not None
+                        else None,
                     )
                 )
 
@@ -648,11 +665,13 @@ class LiveParking:
                         capacity=_int(row, "capacite", default=0) or None,
                         available_spaces=avail,
                         status=ParkingStatus.OPEN
-                        if (avail is None or avail > 0)
+                        if (avail is not None and avail > 0)
+                        else ParkingStatus.UNKNOWN
+                        if avail is None
                         else ParkingStatus.FULL,
                         distance_m=d,
                         realtime=avail is not None,
-                        observed_at=now_paris(),
+                        observed_at=now_paris() if avail is not None else None,
                     )
                 )
 

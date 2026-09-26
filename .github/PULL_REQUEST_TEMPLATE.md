@@ -1,16 +1,17 @@
-## Objectif
+## Purpose
 
-Que fait cette PR, et **pourquoi** ?
+What problem does this change solve?
 
-## Checklist
+## Verification
 
-- [ ] `make quality` vert (ruff format + ruff check + mypy strict + pytest offline)
-- [ ] Tests offline ajoutés/mis à jour (pas de dépendance réseau ni credentials)
-- [ ] Aucun secret dans le code, les fixtures, les logs ou les sorties MCP
-- [ ] Le domaine n’importe pas le SDK MCP / httpx / aiosqlite
-- [ ] Décision non triviale documentée en ADR (`docs/adr/`) si nécessaire
-- [ ] Documentation mise à jour si le comportement public change
+- Quality command and result:
+- Relevant behavior checks and evidence artifacts:
+- Source revision or working diff identity:
 
-## Notes
+Follow the testing policy in `AGENTS.md`. Keep the ten read-only tools and layer
+boundaries. Update the documentation when public behavior or procedures change.
+Do not include credentials or personal data in code, fixtures, logs, or screenshots.
 
-Contexte, captures, ou points d’attention pour la revue.
+## Review notes
+
+Describe important tradeoffs and remaining limits.

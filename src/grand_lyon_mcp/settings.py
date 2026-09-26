@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     config_dir: Path | None = None
     data_dir: Path | None = None
     db_path: Path | None = None
+    fixtures_dir: Path | None = None
     log_level: str = "INFO"
     offline: bool = False
     http_connect_timeout_seconds: float = 5.0

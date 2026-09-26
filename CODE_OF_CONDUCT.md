@@ -1,29 +1,17 @@
-# Code de conduite / Code of Conduct
+# Code of Conduct
 
-Ce projet adopte le **[Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) v2.1**.
+This project adopts the
+[Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
 
-## En bref (FR)
+Participation must be free from harassment, regardless of age, disability, gender
+identity or expression, experience, nationality, appearance, origin, religion,
+or sexual orientation.
 
-Nous nous engageons à faire de la participation à ce projet une expérience sans
-harcèlement pour tout le monde, indépendamment de l’âge, du handicap, de l’identité
-ou de l’expression de genre, du niveau d’expérience, de la nationalité, de l’apparence,
-de l’origine, de la religion ou de l’orientation sexuelle.
+- Respect different views and experiences.
+- Accept constructive feedback and act in the community's interest.
+- Do not use sexual content, insults, harassment, or deliberate disruption.
+- Do not publish private information without consent.
 
-**Comportements attendus** : bienveillance, respect des points de vue divergents,
-acceptation des critiques constructives, focalisation sur l’intérêt de la communauté.
-
-**Comportements inacceptables** : propos ou images à caractère sexuel, trolling,
-insultes, harcèlement public ou privé, publication d’informations privées sans
-consentement.
-
-## Signalement
-
-Les comportements abusifs peuvent être signalés en privé au mainteneur du projet via
-GitHub (Private Vulnerability Reporting pour les cas sensibles, ou contact direct sur le
-profil du mainteneur). Toutes les plaintes seront examinées de façon équitable.
-
-## In short (EN)
-
-This project follows the Contributor Covenant v2.1. Be respectful; harassment and abusive
-behaviour are not tolerated. Report issues privately to the maintainer via GitHub. Full
-text: https://www.contributor-covenant.org/version/2/1/code_of_conduct/
+Report abusive behavior privately to the project maintainer through GitHub.
+The maintainer will review reports fairly. The linked Contributor Covenant defines
+the full scope and enforcement guidelines.

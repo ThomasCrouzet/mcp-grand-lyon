@@ -104,6 +104,10 @@ class TransitService:
                     departures = strict
                 else:
                     departures = list(raw)
+                if direction:
+                    departures = [
+                        d for d in departures if direction.casefold() in d.destination.casefold()
+                    ]
                 used_realtime = bool(departures)
             except Exception:
                 realtime_failed = True
@@ -195,6 +199,9 @@ class TransitService:
         # Final honesty: GTFS-sourced never realtime; re-filter if line set
         if line:
             departures = [d for d in departures if line_matches(line, d.line_name, d.line_id)]
+        if direction:
+            departures = [d for d in departures if direction.casefold() in d.destination.casefold()]
+        departures = departures[:limit]
         if used_gtfs:
             departures = [d.model_copy(update={"realtime": False}) for d in departures]
 

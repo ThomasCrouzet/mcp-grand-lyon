@@ -1,60 +1,57 @@
-# Contribuer
+# Contributing
 
-Merci de votre intérêt ! Ce projet vise un serveur MCP local, honnête et testable
-pour l’open data de la Métropole de Lyon.
-
-## Mise en place
+## Development setup
 
 ```bash
-uv sync --all-extras --dev
-make setup-offline        # config + fixtures, aucun compte requis
+uv sync --locked --all-extras --dev
 ```
 
-## Boucle de développement
+Tests use temporary SQLite databases and packaged fixtures. A live account and
+user-level setup are not required. Keep verification paths separate from personal
+configuration and data.
+
+## Quality gate
 
 ```bash
-uv run ruff format .          # format
-uv run ruff check .           # lint
-uv run mypy src               # types (strict)
-uv run pytest -m "not live"   # tests offline (sans réseau ni credentials)
-# ou tout d'un coup :
-make quality
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy src
+GRAND_LYON_MCP_OFFLINE=true uv run --offline --no-sync pytest -m "not live" --cov
 ```
 
-Lancer **un seul test** :
+`make quality` combines these checks. [Testing](docs/testing.md) gives commands
+that retain quality reports and installed-wheel MCP transcripts. CI must pass
+for Python 3.12 and 3.13. Keep the 85% coverage minimum.
+
+## Change rules
+
+- Follow the testing policy in `AGENTS.md`. Write necessary isolated tests before
+  implementation, after recording the failure modes. Prefer observable E2E results.
+- Keep the ten read-only tools and [layer boundaries](docs/architecture.md).
+- Mark theoretical or incomplete data accurately. Do not invent missing values.
+- Keep credentials and personal data out of commits, logs, and fixtures.
+- Update maintained procedures when behavior changes. Record a design decision
+  in `docs/adr/` when the rationale needs a separate durable record.
+- Use English documentation and short, direct instructions.
+
+## Fixtures
+
+Packaged fixtures live in `src/grand_lyon_mcp/_data/fixtures/`. Use dated inputs
+and exact expected results for time-sensitive behavior.
+
+`scripts/record_fixture.py` can capture an explicitly selected provider response:
 
 ```bash
-uv run pytest tests/unit/test_waste.py::test_classify_battery -q
+uv run python scripts/record_fixture.py --url "https://data.grandlyon.com/SELECTED_PATH" --out sample.json --confirm
 ```
 
-## Règles
+The capture goes to the ignored `tests/fixtures/recorded/` directory. The script
+redacts selected response headers; it does not guarantee removal of secrets from
+the URL or body. Inspect and sanitize the complete capture before you add it to
+the packaged fixtures.
 
-1. **Tests offline par défaut**: un `pytest` nu doit passer sans réseau ni identifiants.
-2. Le **domaine n’importe jamais** le SDK MCP, `httpx` ni `aiosqlite` (cf. `docs/architecture.md`).
-3. `ruff` + `mypy --strict` doivent rester verts. Pas de `type: ignore` ni de `except Exception` silencieux non justifiés.
-4. **Jamais de secret** dans un commit, une fixture, un log ou une sortie MCP.
-5. Documenter les décisions non triviales dans un ADR (`docs/adr/`).
-6. Rester fidèle au principe d’**honnêteté** : ne jamais présenter une donnée théorique (GTFS) comme temps réel, ni inventer une valeur absente.
+## Pull requests
 
-## Enregistrer une fixture
-
-Les tests utilisent des fixtures locales (`grand_lyon_mcp/_data/fixtures/`). Pour en
-capturer une nouvelle depuis une vraie source :
-
-```bash
-python scripts/record_fixture.py --url <URL_ALLOWLISTÉE> --out <chemin>.json --confirm
-```
-
-Le script vérifie l’allowlist de host, supprime les en-têtes et les identifiants, et
-écrit dans `tests/fixtures/recorded/` (scratch local, gitignored). **Inspectez la
-redaction** avant de promouvoir une fixture dans le paquet.
-
-## Flux de contribution
-
-1. Forkez et créez une branche (`feat/…`, `fix/…`).
-2. Follow the testing policy in `AGENTS.md`. Keep `make quality` successful.
-3. Ouvrez une Pull Request en décrivant le _pourquoi_. La CI (`ruff`/`mypy`/`pytest`/`build`) doit passer.
-4. Les commits peuvent être en français ou en anglais ; soyez descriptif.
-
-Toute contribution est soumise au [Code de conduite](CODE_OF_CONDUCT.md) et publiée sous
-licence [MIT](LICENSE).
+Explain the problem, behavior change, and validation evidence. Keep changes
+focused and use a descriptive commit message. Contributions use the
+[MIT license](LICENSE) and follow the [Code of Conduct](CODE_OF_CONDUCT.md).

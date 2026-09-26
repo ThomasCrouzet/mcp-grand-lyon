@@ -1,0 +1,2 @@
+stop_id,stop_name,stop_lat,stop_lon
+BEL1,Bellecour,45.7578,4.8320

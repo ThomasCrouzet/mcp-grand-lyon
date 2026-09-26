@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import aiosqlite
 
 from grand_lyon_mcp.infrastructure.time import now_utc
 
 
 class SourceHealthStore:
-    def __init__(self, conn: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        max_entries: int = 256,
+        retention_seconds: int = 30 * 86400,
+    ) -> None:
+        if max_entries < 0 or retention_seconds < 0:
+            raise ValueError("Health retention limits must not be negative")
         self._conn = conn
+        self._max_entries = max_entries
+        self._retention_seconds = retention_seconds
 
     async def record_success(
         self, source_id: str, *, latency_ms: int, schema_hash: str | None = None
@@ -31,7 +43,7 @@ class SourceHealthStore:
             """,
             (source_id, now, latency_ms, schema_hash),
         )
-        await self._conn.commit()
+        await self.prune()
 
     async def record_failure(
         self, source_id: str, *, error_code: str, latency_ms: int | None = None
@@ -52,7 +64,29 @@ class SourceHealthStore:
             """,
             (source_id, now, latency_ms, error_code),
         )
+        await self.prune()
+
+    async def prune(self) -> int:
+        cutoff = (now_utc() - timedelta(seconds=self._retention_seconds)).isoformat()
+        expired = await self._conn.execute(
+            """DELETE FROM source_health
+            WHERE MAX(COALESCE(last_success_at, ''), COALESCE(last_failure_at, '')) <= ?""",
+            (cutoff,),
+        )
+        evicted = await self._conn.execute(
+            """DELETE FROM source_health WHERE source_id IN (
+                SELECT source_id FROM source_health
+                ORDER BY MAX(COALESCE(last_success_at, ''), COALESCE(last_failure_at, '')) DESC,
+                    rowid DESC
+                LIMIT -1 OFFSET ?
+            )""",
+            (self._max_entries,),
+        )
         await self._conn.commit()
+        count = expired.rowcount + evicted.rowcount
+        await expired.close()
+        await evicted.close()
+        return count
 
     async def get(self, source_id: str) -> dict[str, object] | None:
         cursor = await self._conn.execute(
@@ -60,4 +94,5 @@ class SourceHealthStore:
             (source_id,),
         )
         row = await cursor.fetchone()
+        await cursor.close()
         return dict(row) if row else None

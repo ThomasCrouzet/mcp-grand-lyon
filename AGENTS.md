@@ -37,11 +37,11 @@ The Makefile runtime targets can load local credentials. Use the fixture tests f
 
 `uv run pytest tests/contract tests/integration -m "not live"` exercises dispatch, FastMCP registration, CLI callbacks, storage, and HTTP fixtures.
 These tests run in process. They do not test stdio framing or process startup.
-The CI wheel smoke starts CLI processes, but it accepts missing place results. It does not test MCP transport.
+`scripts/verify_wheel.py --artifact-dir "$ARTIFACT_DIR"` installs a wheel and starts CLI and MCP stdio processes outside the checkout. It requires nonempty place, departure, and parking results and verifies dated fallback, parking, startup-failure, and EOF scenarios.
 Keep isolated checks for source parsing, strict transit filters, fallback accuracy, missing availability, accessibility, redaction, and bounded transfers.
 Also keep storage, retry, concurrency, taxonomy, scoring, setup, and custom validation checks absent from the permissive dispatch assertions.
 Add `--junitxml="$ARTIFACT_DIR/results.xml"` to retain pytest results in a dedicated external directory.
-CI saves `coverage.xml`; that file measures execution, not complete user behavior.
-No process-level MCP E2E suite or repeatable protocol transcript currently exists.
+`scripts/verify_quality.py --artifact-dir "$ARTIFACT_DIR"` runs the quality gate sequentially and retains source identity, fixture hashes, JUnit, coverage, and logs. Use a new external artifact directory for each runner invocation.
+CI saves quality reports and installed-wheel protocol transcripts, including failed runs. Coverage measures execution, not complete user behavior. Offline process tests use fixture providers; retain HTTP-fixture checks for live mapping and isolated resource-state and storage-retention checks.
 `scripts/live_smoke.py` writes `$LIVE_OUT/live_report.json`, with `/tmp/grand-lyon-live-tests` as its default directory.
 That live diagnostic accepts all tool status values, including errors. It does not prove successful service results.

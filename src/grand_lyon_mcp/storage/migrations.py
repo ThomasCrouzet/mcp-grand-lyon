@@ -59,12 +59,16 @@ async def migrate(conn: aiosqlite.Connection) -> list[str]:
         if version in applied:
             continue
         logger.info("applying_migration", extra={"event": version})
-        await conn.executescript(sql)
-        await conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?)",
-            (version,),
-        )
-        await conn.commit()
+        try:
+            await conn.executescript("BEGIN IMMEDIATE;\n" + sql)
+            await conn.execute(
+                "INSERT INTO schema_migrations (version) VALUES (?)",
+                (version,),
+            )
+            await conn.commit()
+        except BaseException:
+            await conn.rollback()
+            raise
         newly.append(version)
     return newly
 

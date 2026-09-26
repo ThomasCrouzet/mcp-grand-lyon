@@ -95,10 +95,10 @@ async def test_cache_purge_and_normalize(tmp_path: Path) -> None:
         etag=None,
         last_modified=None,
         payload="x",
-        ttl_seconds=0,
-        maximum_stale_seconds=0,
+        ttl_seconds=60,
+        maximum_stale_seconds=120,
     )
-    # force expired max_stale
+    # Seed a usable entry before forcing expiry; writes now prune expired entries.
     await conn.execute(
         "UPDATE http_cache SET maximum_stale_at = ? WHERE cache_key = ?",
         ((datetime.now(UTC) - timedelta(hours=1)).isoformat(), "oldkey"),

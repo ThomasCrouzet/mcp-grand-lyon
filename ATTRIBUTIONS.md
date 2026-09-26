@@ -1,25 +1,39 @@
 # Attributions
 
-`grand-lyon-mcp` agrège des données ouvertes de tiers et s’appuie sur des logiciels libres. Le **code** de ce dépôt est sous licence [MIT](LICENSE). Les **données** restituées à l’exécution appartiennent à leurs producteurs et sont soumises à leurs propres licences et obligations d’attribution, à respecter par tout déployeur qui rediffuse ces données.
+The code uses the [MIT license](LICENSE). Provider data has separate licenses and
+attribution requirements. Read the metadata for each dataset before redistribution.
 
-> Projet **indépendant**, non affilié à la Métropole de Lyon, SYTRAL Mobilités, Keolis-TCL ni JCDecaux. Les marques citées appartiennent à leurs titulaires et sont employées de façon descriptive.
+This project is independent of Métropole de Lyon, SYTRAL Mobilités, Keolis-TCL,
+and JCDecaux. Names and marks identify their services.
 
-## Sources de données
+## Data producers
 
-| Source | Producteur / responsable | Portail | Licence (à vérifier par jeu) |
-|--------|--------------------------|---------|------------------------------|
-| Portail open data (parkings, trafic, équipements, déchets, environnement…) | **Métropole de Lyon** | [data.grandlyon.com](https://data.grandlyon.com/) | Majoritairement Licence Ouverte / Open Licence (Etalab): attribution requise |
-| GTFS théorique, prochains passages, SIRI temps réel, accessibilité TCL | **SYTRAL Mobilités** (réseau TCL) | data.grandlyon.com | Selon le jeu ; certains flux temps réel peuvent avoir des conditions propres |
-| Disponibilités Vélo’v | **JCDecaux** (exploitant), via la Métropole de Lyon | data.grandlyon.com | Selon le jeu |
-| Géocodage (adresses / lieux) | Instance **Photon** de la Métropole de Lyon (moteur [Photon](https://github.com/komoot/photon), Apache-2.0) sur données [OpenStreetMap](https://www.openstreetmap.org/copyright) | download.data.grandlyon.com | Données OSM sous **ODbL**: attribution « © les contributeurs OpenStreetMap » |
-| Calcul d’itinéraire (optionnel, désactivé par défaut) | [Transitous](https://transitous.org/): service communautaire bénévole (moteur MOTIS) + feeds GTFS des réseaux | api.transitous.org | Service gratuit à usage équitable ; feeds sous licences propres |
+| Data | Producer or service | License reference |
+| --- | --- | --- |
+| Parking, road events, facilities, waste | Métropole de Lyon | Dataset metadata at [DataGrandLyon](https://data.grandlyon.com/) |
+| TCL GTFS, departures, SIRI, accessibility | SYTRAL Mobilités | Dataset-specific portal terms |
+| Vélo'v availability | JCDecaux through Métropole de Lyon | Dataset-specific portal terms |
+| Geocoding | Métropole's [Photon](https://github.com/komoot/photon) instance | Photon: Apache-2.0; OSM-derived data: [OpenStreetMap copyright and ODbL](https://www.openstreetmap.org/copyright) |
+| Optional journey planning | [Transitous](https://transitous.org/) and source GTFS feeds | Service terms and individual feed licenses |
 
-**Conformité de réutilisation.** La licence exacte de chaque jeu doit être lue dans ses métadonnées sur le portail (cf. [`docs/data-sources.md`](docs/data-sources.md)). Ce dépôt **ne redistribue aucun jeu de données réel** : seules des fixtures synthétiques/anonymisées de démonstration sont incluses (`grand_lyon_mcp/_data/fixtures/`). L’attribution de chaque source est par ailleurs transportée au runtime dans l’enveloppe MCP (champ `sources[].attribution`).
+Many Métropole datasets use the Etalab Open Licence. Do not assume that license
+applies to every feed. Attribute OpenStreetMap-derived data to
+“© OpenStreetMap contributors”.
 
-**Usage équitable des services tiers gratuits.** L’instance Photon de la Métropole et l’API Transitous sont des services partagés. Un déploiement à fort volume devrait envisager d’auto-héberger (Photon, MOTIS) plutôt que de solliciter ces instances publiques. L’URL Transitous est configurable (`TRANSITOUS_BASE_URL`) et la fonctionnalité est désactivée par défaut.
+The package contains demonstration and regression fixtures, not a complete live
+dataset. Provenance fields are available in tool envelopes; not every provider
+currently fills every provenance field. See [Data sources](docs/data-sources.md).
 
-## Dépendances logicielles
+Photon and Transitous are shared services. Follow their usage terms and use an
+appropriate dedicated service for high request volumes. A custom endpoint must
+also satisfy this project's network allowlist.
 
-Toutes les dépendances runtime sont sous licences permissives (MIT / BSD / Apache-2.0) : `mcp`, `httpx`, `pydantic`, `pydantic-settings`, `aiosqlite`, `pyyaml`, `typer`, `tenacity`, `platformdirs`, `rapidfuzz`, `shapely`, `pyproj`, `python-dateutil`. Aucune dépendance copyleft au niveau du paquet.
+## Software
 
-> Note : les wheels de `shapely` et `pyproj` embarquent respectivement **GEOS** (LGPL-2.1) et **PROJ** ; ces binaires sont résolus à l’installation par leurs paquets amont et ne sont pas redistribués par ce dépôt.
+Runtime dependencies are listed in `pyproject.toml`; exact versions are in
+`uv.lock`. They include MCP, HTTPX, Pydantic, aiosqlite, PyYAML, Typer, Tenacity,
+platformdirs, RapidFuzz, Shapely, pyproj, and python-dateutil.
+
+Check the installed distributions for their license texts and bundled-library
+notices. Shapely wheels can include GEOS (LGPL-2.1), and pyproj wheels can include
+PROJ. A package's own license does not replace its bundled-library obligations.

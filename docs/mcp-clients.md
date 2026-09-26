@@ -1,64 +1,18 @@
-# Brancher un client MCP
+# MCP clients
 
-`grand-lyon-mcp` expose le protocole **MCP** en transport **stdio**. Il fonctionne avec n’importe quel client MCP compatible (Claude Desktop, Cursor, agents maison…).
+The server uses MCP over **stdio**. The client starts the server as a child process
+and exchanges JSON-RPC messages on stdin and stdout. Logs go to stderr.
 
-## Français
+## Source checkout
 
-### Bloc de configuration prêt à coller
-
-Générez un bloc `mcpServers` avec les chemins absolus de votre machine :
-
-```bash
-make client-config
-# ou
-uv run grand-lyon-mcp client-config          # via scripts/run_mcp.sh (recommandé)
-uv run grand-lyon-mcp client-config --bin     # via le binaire du venv
-```
-
-Exemple de sortie (format standard `mcpServers`, à coller dans la config de votre client) :
-
-```json
-{
-  "mcpServers": {
-    "grand-lyon": {
-      "command": "/chemin/absolu/mcp-grand-lyon/scripts/run_mcp.sh",
-      "args": ["serve", "--transport", "stdio"]
-    }
-  }
-}
-```
-
-- **Claude Desktop** : `claude_desktop_config.json` (voir la doc Claude Desktop pour l’emplacement selon l’OS).
-- **Cursor** et autres clients : même bloc `mcpServers`.
-
-### Secrets
-
-Ne placez **jamais** d’identifiant dans la configuration du client MCP.
-
-- **Option A: env hérité** : exportez `DATAGRANDLYON_USERNAME` et `DATAGRANDLYON_PASSWORD` dans l’environnement qui lance le client MCP ; le serveur en hérite.
-- **Option B: wrapper local** : pointez `command` vers `scripts/run_mcp.sh` (chemin absolu). Le wrapper source `secrets.env` (`chmod 600`) hors dépôt et, sans identifiants, bascule automatiquement en mode offline (fixtures).
-
-### Vérifications utiles
-
-- Rechargez les serveurs MCP côté client.
-- Listez les outils : seuls les `lyon_*` doivent apparaître.
-- Test local sans client : `make smoke` (ou `grand-lyon-mcp smoke`).
-
-### Mode offline
-
-`GRAND_LYON_MCP_OFFLINE=true` : fixtures locales, aucun appel réseau. Utile pour valider la configuration d’un client sans credentials.
-
----
-
-## English
-
-`grand-lyon-mcp` speaks MCP over **stdio** and works with any compatible client.
-
-### Ready-to-paste config
+Generate a configuration block with absolute paths:
 
 ```bash
-make client-config          # or: uv run grand-lyon-mcp client-config
+uv run grand-lyon-mcp client-config
 ```
+
+Example for clients with an `mcpServers` configuration, such as Claude Desktop or
+Cursor:
 
 ```json
 {
@@ -71,11 +25,49 @@ make client-config          # or: uv run grand-lyon-mcp client-config
 }
 ```
 
-### Secrets
+The wrapper uses the checkout's `.venv/bin/grand-lyon-mcp`. Run
+`uv sync --locked --all-extras --dev` before you use it.
 
-Never put credentials in the client config.
+## Installed wheel
 
-- **Option A**: inherit `DATAGRANDLYON_USERNAME` / `DATAGRANDLYON_PASSWORD` from the parent process.
-- **Option B**: `scripts/run_mcp.sh` sourcing `secrets.env` (`chmod 600`): falls back to offline mode without credentials.
+Set `command` to the absolute installed `grand-lyon-mcp` executable. The path
+generator is for source checkouts; it does not locate a wheel environment.
 
-Logs go to stderr; stdout is MCP-only.
+```json
+{
+  "mcpServers": {
+    "grand-lyon": {
+      "command": "/absolute/path/venv/bin/grand-lyon-mcp",
+      "args": ["serve", "--transport", "stdio"],
+      "env": {"GRAND_LYON_MCP_OFFLINE": "true"}
+    }
+  }
+}
+```
+
+Configuration templates, SQL migrations, and demonstration fixtures are included
+in the wheel. A source checkout is not required at runtime.
+
+## Credentials
+
+Keep credentials out of client configuration files. For live use, the server can
+inherit `DATAGRANDLYON_USERNAME` and `DATAGRANDLYON_PASSWORD` from its parent.
+The source-checkout wrapper can also load `secrets.env` from the user configuration
+directory. It checks the Linux path and then the macOS path. Set
+`GRAND_LYON_MCP_SECRETS_FILE` to select a different credential file.
+
+The wrapper then loads the checkout's `.env`, if present. Without credentials,
+it enables fixture mode unless offline mode was explicitly set. Use
+`GRAND_LYON_MCP_OFFLINE=true` to block network access during demonstration use.
+
+## Verify the connection
+
+1. Reload the client's MCP configuration.
+2. List tools. The server must expose exactly the ten tools in the
+   [tool reference](tools.md).
+3. Call `lyon_resolve_place` with `{"query": "Part-Dieu"}`.
+4. Inspect stderr if startup or initialization fails.
+
+Running `serve` in a terminal produces no interactive prompt. The `smoke` command
+can diagnose handler results without an MCP client. The
+[installed-wheel checks](testing.md) verify the real protocol and save a transcript.

@@ -1,25 +1,28 @@
 ---
 name: Bug report
-about: Signaler un dysfonctionnement
+about: Report incorrect behavior
 title: "[bug] "
 labels: bug
 ---
 
-**Description**
-Décrivez le problème clairement.
+## Description
 
-**Reproduction**
-Étapes / commande MCP ou CLI, arguments utilisés.
+Describe the problem and its effect.
 
-**Comportement attendu vs observé**
+## Reproduction
 
-**Environnement**
-- OS :
-- Python : `python --version`
-- Version : `grand-lyon-mcp version`
-- Mode : offline / live
+Include the MCP request or CLI command, arguments, and fixture data if applicable.
 
-**Logs (stderr, sans secret)**
-```
-coller ici, ne jamais inclure d'identifiant DataGrandLyon
-```
+## Expected and actual results
+
+## Environment
+
+- OS:
+- Python: `python --version`
+- Version: `grand-lyon-mcp version`
+- Mode: offline or live
+
+## Evidence
+
+Attach relevant stderr logs or a verification report. Remove credentials and
+personal data before you submit the issue.

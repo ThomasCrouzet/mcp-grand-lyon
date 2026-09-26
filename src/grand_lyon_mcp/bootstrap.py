@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,9 +50,11 @@ from grand_lyon_mcp.services.transit_service import TransitService
 from grand_lyon_mcp.services.velov_service import VelovService
 from grand_lyon_mcp.services.waste_service import WasteService, WasteTaxonomy
 from grand_lyon_mcp.settings import Settings, get_settings
+from grand_lyon_mcp.storage.cache import HttpCache
 from grand_lyon_mcp.storage.database import connect_and_migrate
 from grand_lyon_mcp.storage.entity_repository import EntityRepository
 from grand_lyon_mcp.storage.profile_repository import ProfileRepository
+from grand_lyon_mcp.storage.source_health import SourceHealthStore
 from grand_lyon_mcp.storage.velov_history import VelovHistoryStore
 
 
@@ -86,8 +89,10 @@ class AppContainer:
     dgl: DataGrandLyonClient
 
     async def aclose(self) -> None:
-        await self.http.aclose()
-        await self.conn.close()
+        try:
+            await self.http.aclose()
+        finally:
+            await self.conn.close()
 
 
 async def build_app(
@@ -99,17 +104,32 @@ async def build_app(
     settings = settings or get_settings()
     setup_logging(settings.log_level)
 
-    path = db_path or settings.resolved_db_path()
-    conn = await connect_and_migrate(path)
+    async with AsyncExitStack() as resources:
+        conn = await connect_and_migrate(db_path or settings.resolved_db_path())
+        resources.push_async_callback(conn.close)
+        http = HttpClient(
+            connect_timeout=settings.http_connect_timeout_seconds,
+            read_timeout=settings.http_read_timeout_seconds,
+            max_parallel=settings.max_parallel_requests,
+            verify_tls=settings.verify_tls,
+            transitous_enabled=settings.transitous_enabled,
+            offline=settings.offline,
+        )
+        resources.push_async_callback(http.aclose)
+        app = await _build_services(settings, conn, http, fixtures_dir)
+        # The complete container now owns both resources.
+        resources.pop_all()
+        return app
 
-    http = HttpClient(
-        connect_timeout=settings.http_connect_timeout_seconds,
-        read_timeout=settings.http_read_timeout_seconds,
-        max_parallel=settings.max_parallel_requests,
-        verify_tls=settings.verify_tls,
-        transitous_enabled=settings.transitous_enabled,
-        offline=settings.offline,
-    )
+
+async def _build_services(
+    settings: Settings,
+    conn: aiosqlite.Connection,
+    http: HttpClient,
+    fixtures_dir: Path | None,
+) -> AppContainer:
+    await HttpCache(conn).prune()
+    await SourceHealthStore(conn).prune()
     dgl = DataGrandLyonClient(
         http,
         username=settings.datagrandlyon_username,
@@ -142,7 +162,7 @@ async def build_app(
         if place is None:
             await profiles.load_from_yaml(packaged_config / "profiles.example.yaml")
 
-    fx = fixtures_dir or default_fixtures_dir()
+    fx = fixtures_dir or settings.fixtures_dir or default_fixtures_dir()
     use_fixtures = settings.offline or not settings.has_credentials()
 
     # Variables typées par leur Protocol : mypy vérifie la conformité des familles
@@ -187,8 +207,16 @@ async def build_app(
         realtime = LiveTransitRealtime(dgl, stop_resolver=gtfs)
         alerts = LiveTransitAlerts(dgl)
         accessibility_p = LiveAccessibility(dgl)
-        velov_p = LiveVelovProvider(dgl)
-        parking_p = LiveParking(dgl, entity_lookup=entities)
+        velov_source = await source_registry.get("velov_realtime")
+        parking_source = await source_registry.get("parking_realtime")
+        velov_p = LiveVelovProvider(
+            dgl, cache_ttl_seconds=float(velov_source["ttl_seconds"]) if velov_source else 45
+        )
+        parking_p = LiveParking(
+            dgl,
+            entity_lookup=entities,
+            cache_ttl_seconds=float(parking_source["ttl_seconds"]) if parking_source else 60,
+        )
         traffic_p = LiveTraffic(dgl)
         facilities_p = LiveFacilities(dgl)
         # Pas de source live d'indicateurs environnementaux : provider=None →

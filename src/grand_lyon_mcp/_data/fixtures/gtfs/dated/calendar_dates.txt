@@ -1,0 +1,3 @@
+service_id,date,exception_type
+REMOVED,20260720,2
+ADDED,20260720,1

@@ -1,20 +1,42 @@
 # Changelog
 
-Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
-versionnage [SemVer](https://semver.org/lang/fr/).
+This project follows [Semantic Versioning](https://semver.org/).
 
-## [0.1.0]: 2026-07-19
+## Unreleased
 
-Première version publique open source.
+### Fixed
 
-### Ajouté
-- Serveur MCP stdio exposant **10 outils** métier `lyon_*` en lecture seule (transit TCL, Vélo’v, parkings/P+R, trafic, accessibilité, équipements, environnement, déchets, itinéraires, briefings).
-- CLI `grand-lyon-mcp` : `serve`, `doctor`, `catalog scan|validate`, `sync gtfs|static`, `snapshot velov`, `db migrate|info`, `setup`, `env`, `client-config`, `smoke`, `version`.
-- Mode **offline/fixtures** (sans compte ni réseau) et mode **live** DataGrandLyon.
-- Providers : DataPusher, OGC API Features, GTFS, SIRI Lite, Photon, Transitous (optionnel).
-- Stockage SQLite (FTS5 + RTree), cache HTTP (ETag/Last-Modified, stale-on-error, single-flight), redaction systématique des secrets, allowlist réseau anti-SSRF.
-- Paquet **installable depuis le dépôt** (`pip install .` / `uv sync`) : templates de config et fixtures de démo empaquetés (`grand_lyon_mcp/_data`), résolus via `importlib.resources`. Pas encore publié sur PyPI.
-- Documentation FR (README, `docs/tools.md`, `docs/mcp-clients.md`, `docs/architecture.md`, `docs/data-sources.md`, ADR) ; `ATTRIBUTIONS.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`.
-- CI GitHub Actions : lint/format (ruff), types (mypy strict), tests offline (pytest, matrice 3.12/3.13), build + smoke du wheel, scan de secrets (gitleaks), CodeQL. Workflow de release (tag `v*`) prêt pour GitHub Release + PyPI Trusted Publishing, non encore déclenché.
+- Close HTTP and SQLite resources after startup errors, migration errors, and cancellation.
+- Close SQLite when HTTP shutdown fails. Apply each migration in a transaction.
+- Apply GTFS calendars and date exceptions. Handle previous and next service days,
+  both DST changes, and departure limits after filtering.
+- Keep realtime line and direction filters strict before theoretical fallback.
+- Preserve zero parking availability. Keep missing occupancy separate from capacity
+  and enforce radius filtering at the service boundary.
+- Refresh live parking and Vélo'v memory caches after their source TTL.
 
-[0.1.0]: https://github.com/ThomasCrouzet/mcp-grand-lyon
+### Added
+
+- Installed-wheel CLI and MCP stdio verification with dated mobility fixtures,
+  startup-failure scenarios, exact results, and retained protocol evidence.
+- Automatic count and byte limits for HTTP cache storage, source-health retention,
+  and explicit stale-read warnings.
+- Sequential quality verification with source identity, fixture hashes, JUnit,
+  coverage, and logs. CI uploads quality and protocol evidence on failure too.
+- `GRAND_LYON_MCP_FIXTURES_DIR` for alternate local fixture sets.
+
+### Documentation
+
+- Consolidate setup and runtime procedures in maintained English guides.
+- Merge troubleshooting into Operations and short design notes into reference pages.
+- Retire the completed improvement list and correct outdated cache and SDK claims.
+
+## 0.1.0: 2026-07-19
+
+- Initial read-only MCP server with ten `lyon_*` tools and a Typer CLI.
+- DataPusher, OGC Features, GTFS, SIRI, Photon, and optional Transitous providers.
+- Offline fixture providers, packaged configuration, SQLite FTS5/RTree, and local history.
+- HTTP cache storage and concurrency helpers. These components do not imply that
+  all live providers use persistent response caching or stale-on-error.
+- GitHub Actions for quality checks, wheel builds, secret scanning, and CodeQL.
+  Tag-triggered release workflow for GitHub Releases and PyPI trusted publishing.

@@ -1,40 +1,29 @@
-# Security Policy
+# Security policy
 
-## Signaler une vulnérabilité (FR)
+## Report a vulnerability
 
-Merci de **ne pas ouvrir d’issue publique** pour une faille de sécurité.
+Use [GitHub private vulnerability reporting](https://github.com/ThomasCrouzet/mcp-grand-lyon/security/advisories/new).
+Do not disclose an unpatched vulnerability in a public issue. Include reproduction
+steps, affected versions, and expected impact. The target response time is seven days.
 
-Utilisez le canal privé de GitHub : onglet **Security → Report a vulnerability**
-([Private Vulnerability Reporting](https://github.com/ThomasCrouzet/mcp-grand-lyon/security/advisories/new))
-du dépôt. Vous y décrivez la faille et un avis de sécurité privé est créé.
+The maintained version series is `0.1.x`.
 
-Délai de réponse indicatif : sous ~7 jours. Merci d’inclure une description, les étapes
-de reproduction et l’impact estimé.
+## Boundaries
 
-### Versions supportées
+- MCP tools are read-only. They do not accept arbitrary URLs, SQL, CQL, or tables.
+- Credentials enter through environment variables. The local wrapper can load a
+  private credential file. Basic authentication uses HTTPS headers, not URL fields.
+- Logs use secret redaction and go to stderr. Fixture captures still require review.
+- Outgoing HTTP requires an allowed HTTPS host on port 443. The default hosts are
+  `data.grandlyon.com` and `download.data.grandlyon.com`. Enabling Transitous also
+  permits `api.transitous.org`.
+- Redirects use the same origin policy. Removed credentials are not reapplied.
+- Normal HTTP responses have an 8 MiB body limit and a 60-second total deadline.
+  Compressed HTTP bodies are rejected before decompression.
+- GTFS downloads have a 300 MiB archive limit and use atomic file replacement.
+  The importer checks archive-member sizes, but still loads CSV records in memory.
 
-| Version | Supportée |
-|---------|-----------|
-| 0.1.x   | ✅ |
-
-## Garanties et limites
-
-- **Credentials** : uniquement via variables d’environnement (`DATAGRANDLYON_USERNAME` / `DATAGRANDLYON_PASSWORD`) ; jamais dans le dépôt, les logs, les erreurs, les fixtures ou les sorties MCP. HTTP Basic uniquement sur HTTPS via `httpx` (identifiants en en-tête, jamais dans l’URL).
-- **Réseau** : allowlist de hosts appliquée à chaque requête sortante, y compris les cibles de redirections 3xx (anti-SSRF). Redaction systématique (`Authorization`, mots de passe, tokens…) dans les logs et exceptions.
-
-HTTP requests require an allowed HTTPS host on port 443.
-Redirects use the same policy and cannot restore credentials that HTTPX removed.
-Normal responses have an 8 MiB byte limit and a 60-second total deadline.
-The client requests identity encoding and rejects compressed HTTP bodies before decompression.
-GTFS downloads use a 300 MiB limit and atomic file publication.
-See [the HTTP transfer decision](docs/adr/0005-bounded-http-transfers.md).
-
-- **Surface MCP** : outils en lecture seule uniquement ; aucun outil n’accepte d’URL, de SQL/CQL ni de filtre brut DataGrandLyon. Entrées validées par Pydantic (`extra="forbid"`, bornes strictes).
-- **Hors garantie** : désactiver la vérification TLS (`GRAND_LYON_MCP_VERIFY_TLS=false` / `network.verify_tls: false`) expose les identifiants à une interception (MITM) et n’est pas couvert. Fournir une source (`TRANSITOUS_BASE_URL`) ou un fichier GTFS (`--from-file`) hors des hosts/sources de confiance sort du modèle de menace.
-
-## Reporting a vulnerability (EN)
-
-Please do **not** open a public issue for security problems. Use GitHub **Private
-Vulnerability Reporting** (Security → Report a vulnerability). Expect a response within
-~7 days. Credentials are environment-only; MCP tools are read-only; a host allowlist and
-log redaction are enforced. Disabling TLS verification is out of the supported scope.
+See [the bounded-transfer decision](docs/adr/0005-bounded-http-transfers.md).
+Disabling TLS verification permits interception and is outside the supported
+security configuration. A custom Transitous URL remains subject to the HTTP
+allowlist. Local GTFS files and configuration files must come from a trusted source.

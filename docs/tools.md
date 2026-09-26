@@ -1,159 +1,186 @@
-# Outils MCP
+# MCP tool reference
 
-Le serveur expose exactement **10 outils** en lecture seule. Toutes les entrées sont validées par des modèles Pydantic stricts (`extra="forbid"` : un argument inconnu est rejeté). Toutes les sorties partagent une **enveloppe commune**.
+The server exposes exactly ten read-only tools. Pydantic input models reject
+unknown fields. All results use the same envelope. Summaries and user-facing
+messages are in French.
 
-## Enveloppe de sortie
+## Result envelope
 
-```jsonc
+```json
 {
   "schema_version": "1.0",
-  "request_id": "uuid",
-  "status": "ok",              // ok | partial | not_found | ambiguous | unavailable | invalid_request
+  "request_id": "request-uuid",
+  "status": "partial",
   "generated_at": "2026-07-20T08:00:00+02:00",
-  "summary": "Résumé factuel court en français.",
-  "data": { /* charge utile spécifique à l'outil */ },
-  "sources": [
-    { "provider": "DataGrandLyon", "source_id": "…", "attribution": "…",
-      "observed_at": "…", "retrieved_at": "…", "age_seconds": 12,
-      "realtime": true, "stale": false }
-  ],
+  "summary": "Horaires théoriques GTFS.",
+  "data": {"departures": []},
+  "sources": [],
   "warnings": [],
-  "degraded": false
+  "degraded": true
 }
 ```
 
-Un lieu (`PlaceRef`) accepte **exactement un** mode : `{"query": "Part-Dieu"}`, `{"place_id": "lyon:…"}`, `{"latitude": 45.76, "longitude": 4.86}` ou `{"profile_place": "home"}`.
+`status` is one of `ok`, `partial`, `not_found`, `ambiguous`, `unavailable`, or
+`invalid_request`. Read `warnings` and source provenance before using incomplete
+results. A successful protocol response can contain an unavailable domain result.
 
----
+Source records can include `provider`, `source_id`, `dataset`, `attribution`,
+`license`, `observed_at`, `retrieved_at`, `age_seconds`, `realtime`, and `stale`.
+Not every provider currently supplies source records.
+
+## Place references
+
+A `PlaceRef` accepts exactly one of these forms:
+
+```jsonl
+{"query": "Part-Dieu"}
+{"place_id": "gtfs:stop:BEL1"}
+{"latitude": 45.76, "longitude": 4.86}
+{"profile_place": "home"}
+```
+
+Queries and IDs have a 200-character limit. Profile-place names have a 64-character
+limit. Coordinates must be valid latitude and longitude values.
 
 ## `lyon_resolve_place`
 
-Résout une adresse, un arrêt TCL, une station Vélo’v, un quartier ou un lieu personnel.
+Resolve an address, stop, station, or personal place. The result contains `candidates`.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `query` | string \| null | – | ≤ 200 car. |
-| `near` | PlaceRef \| null | – | |
-| `types` | list[str] \| null | – | ≤ 20 |
-| `limit` | int | 5 | 1–20 |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `query` | string or null | Up to 200 characters |
+| `near` | PlaceRef or null | Optional location hint |
+| `types` | string list or null | Up to 20 items |
+| `limit` | integer | 5; range 1–20 |
 
-```jsonc
-// entrée
-{ "query": "Part-Dieu", "near": { "latitude": 45.764, "longitude": 4.835 }, "limit": 5 }
-// data
-{ "candidates": [
-  { "id": "lyon:transport_station:…", "name": "Gare Part-Dieu Villette",
-    "type": "transport_station", "latitude": 45.7606, "longitude": 4.8618,
-    "distance_m": 120, "confidence": 0.94 }
-] }
-```
+Example: `{"query": "Part-Dieu", "limit": 3}`.
 
 ## `lyon_next_departures`
 
-Prochains passages TCL à un arrêt/station.
+Get departures at one stop. Results contain `stop` and `departures`.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `stop` | PlaceRef | requis | |
-| `line` | string \| null | – | ≤ 32 |
-| `direction` | string \| null | – | ≤ 100 |
-| `at` | datetime \| null | maintenant | |
-| `limit` | int | 6 | 1–20 |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `stop` | PlaceRef | Required |
+| `line` | string or null | Up to 32 characters |
+| `direction` | string or null | Destination text; up to 100 characters |
+| `at` | datetime or null | Current time |
+| `limit` | integer | 6; range 1–20 |
 
-```jsonc
-{ "stop": { "query": "Bellecour" }, "line": "A", "limit": 3 }
-```
+Example: `{"stop": {"query": "Bellecour"}, "line": "A", "limit": 3}`.
+
+Line matching is strict. A failed realtime filter can trigger GTFS fallback.
+GTFS uses service calendars and date exceptions within the next 24 elapsed hours.
+It handles midnight service days and both DST changes. GTFS departures always
+have `realtime=false`, with `STALE_DATA` or `PARTIAL_RESULT` warnings.
+`at` controls the theoretical query; the realtime feed does not provide a historical archive.
 
 ## `lyon_mobility_status`
 
-Alertes TCL, accessibilité, trafic et chantiers pour des lignes/zones.
+Get transit alerts, accessibility incidents, traffic information, and road works.
 
-| Argument | Type | Bornes |
-|----------|------|--------|
-| `lines` | list[str] \| null | ≤ 20 |
-| `areas` | list[PlaceRef] \| null | ≤ 10 |
-| `include` | list[str] \| null | ≤ 10 (`transit`, `accessibility`, `traffic`, `roadworks`) |
+| Argument | Type | Limit |
+| --- | --- | --- |
+| `lines` | string list or null | 20 items |
+| `areas` | PlaceRef list or null | 10 items |
+| `include` | string list or null | 10 items: `transit`, `accessibility`, `traffic`, `roadworks` |
 
 ## `lyon_trip_options`
 
-Compare des modes de déplacement (TCL, Vélo’v, P+R, voiture, marche) entre deux lieux. Le score est calculé côté serveur, déterministe.
+Compare travel modes between two places. The server computes deterministic scores.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `origin` / `destination` | PlaceRef | requis | |
-| `departure_at` / `arrival_before` | datetime \| null | – | |
-| `modes` | list[str] \| null | – | ≤ 10 |
-| `preferences` | objet \| null | – | `max_walking_m`, `minimum_velov_bikes/docks`, `avoid_disruptions`, `wheelchair` |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `origin`, `destination` | PlaceRef | Required |
+| `departure_at`, `arrival_before` | datetime or null | Optional |
+| `modes` | string list or null | Up to 10 items |
+| `preferences` | object or null | Fields below |
+
+Preferences: `max_walking_m` (default 800, range 0–5000), `minimum_velov_bikes`
+and `minimum_velov_docks` (default 3, range 0–50), `avoid_disruptions` (default
+`true`), and `wheelchair` (default `false`). TCL duration can be unavailable when
+Transitous is disabled or fails.
 
 ## `lyon_parking_options`
 
-Parkings publics et P+R près d’une destination.
+Find public parking and park-and-ride facilities. Results contain `options`.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `destination` | PlaceRef | requis | |
-| `types` | list[str] \| null | – | ≤ 5 (`public_parking`, `park_and_ride`) |
-| `radius_m` | int | 1500 | 50–5000 |
-| `minimum_spaces` | int | 0 | 0–500 |
-| `limit` | int | 10 | 1–20 |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `destination` | PlaceRef | Required |
+| `types` | string list or null | Up to 5 items: `public_parking`, `park_and_ride` |
+| `radius_m` | integer | 1500; range 50–5000 |
+| `minimum_spaces` | integer | 0; range 0–500 |
+| `limit` | integer | 10; range 1–20 |
+
+All options are within the requested radius. `capacity` is total capacity;
+`available_spaces` is a separate live value. Zero means full. `null` means unknown.
+Unknown occupancy has `realtime=false` and does not imply an open or full car park.
+Mixed availability produces a partial-data warning.
+
+`minimum_spaces` removes known counts below the threshold. It retains unknown
+counts with a warning; it does not guarantee that those options meet the threshold.
 
 ## `lyon_accessibility_check`
 
-Vérifie l’accessibilité d’arrêts ou d’un trajet. **L’absence de donnée n’est jamais assimilée à « accessible »** (`unknown`).
+Check available accessibility evidence. Missing evidence means `unknown`, not accessible.
 
-| Argument | Type | Bornes |
-|----------|------|--------|
-| `origin` / `destination` | PlaceRef \| null | |
-| `stops` | list[PlaceRef] \| null | ≤ 20 |
-| `needs` | list[str] \| null | ≤ 10 (`wheelchair`, `step_free`) |
+| Argument | Type | Limit |
+| --- | --- | --- |
+| `origin`, `destination` | PlaceRef or null | Optional |
+| `stops` | PlaceRef list or null | 20 items |
+| `needs` | string list or null | 10 items, including `wheelchair` and `step_free` |
 
 ## `lyon_nearby_facilities`
 
-Équipements urbains à proximité.
+Find supported nearby facilities.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `location` | PlaceRef | requis | |
-| `categories` | list[str] | requis | ≤ 20 (`toilet`, `drinking_water`, `park`, `bike_pump`, `velov_station`…) |
-| `radius_m` | int | 1000 | 50–5000 |
-| `open_at` | datetime \| null | – | |
-| `limit_per_category` | int | 5 | 1–20 |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `location` | PlaceRef | Required |
+| `categories` | string list | Required; up to 20 items |
+| `radius_m` | integer | 1000; range 50–5000 |
+| `open_at` | datetime or null | Optional |
+| `limit_per_category` | integer | 5; range 1–20 |
+
+Categories include `toilet`, `drinking_water`, `park`, `bike_pump`, and
+`velov_station`. Actual provider support varies. Missing opening-hours data does
+not establish that a facility is open.
 
 ## `lyon_environment_brief`
 
-Indicateurs environnementaux disponibles (pollen, qualité de l’air, chaleur). Les indicateurs sans source résolue renvoient `UNSUPPORTED_INDICATOR` sans bloquer les autres.
+Get supported environmental indicators. Live indicators without a configured
+source return `UNSUPPORTED_INDICATOR`.
 
-| Argument | Type | Bornes |
-|----------|------|--------|
-| `location` | PlaceRef | requis |
-| `at` | datetime \| null | |
-| `indicators` | list[str] \| null | ≤ 10 (`pollen`, `air_quality`, `heat`) |
+| Argument | Type | Limit |
+| --- | --- | --- |
+| `location` | PlaceRef | Required |
+| `at` | datetime or null | Optional |
+| `indicators` | string list or null | 10 items: `pollen`, `air_quality`, `heat` |
 
 ## `lyon_waste_dropoff`
 
-Classe un objet (taxonomie déterministe, sans LLM) et propose des déchèteries / points de collecte.
+Classify an item with a deterministic taxonomy and find collection facilities.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `item` | string | requis | 1–200 car. |
-| `location` | PlaceRef \| null | – | |
-| `transport` | string | `car` | ≤ 20 |
-| `open_at` | datetime \| null | – | |
-| `radius_m` | int | 15000 | 100–50000 |
-| `limit` | int | 10 | 1–20 |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `item` | string | Required; 1–200 characters |
+| `location` | PlaceRef or null | Optional |
+| `transport` | string | `car`; up to 20 characters |
+| `open_at` | datetime or null | Optional |
+| `radius_m` | integer | 15000; range 100–50000 |
+| `limit` | integer | 10; range 1–20 |
 
 ## `lyon_personal_briefing`
 
-Briefing selon un profil local (trajet habituel). N’envoie aucune notification : le déclenchement et la livraison sont à la charge du client MCP appelant.
+Build a briefing from a local profile. The caller controls scheduling and delivery;
+the tool sends no notifications.
 
-| Argument | Type | Défaut | Bornes |
-|----------|------|--------|--------|
-| `profile` | string | requis | 1–64 car. |
-| `at` | datetime \| null | – | |
-| `compare_with_previous` | bool | `true` | |
+| Argument | Type | Default or limit |
+| --- | --- | --- |
+| `profile` | string | Required; 1–64 characters |
+| `at` | datetime or null | Optional |
+| `compare_with_previous` | boolean | `true` |
 
----
-
-## Outils volontairement absents
-
-Aucun outil « admin » ni requête brute n’est exposé au MCP : pas de `datagrandlyon_query(table, filters, url)`, pas d’URL/SQL/CQL arbitraire. Ces opérations restent internes/CLI. C’est une garantie de sécurité de la surface publique.
+Administrative and raw-provider operations are not MCP tools. Use the CLI for
+source discovery, data import, and database maintenance.

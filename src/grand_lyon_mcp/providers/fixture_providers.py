@@ -277,7 +277,9 @@ class FixtureParking:
                 continue
             lat = float(item.get("lat") or item.get("latitude") or 0)
             lon = float(item.get("lon") or item.get("longitude") or item.get("lng") or 0)
-            avail = item.get("available") or item.get("places_disponibles")
+            avail = item.get("available")
+            if avail is None:
+                avail = item.get("places_disponibles")
             avail_i = int(avail) if avail is not None else None
             if avail_i is not None and avail_i < minimum_spaces:
                 continue
@@ -299,10 +301,14 @@ class FixtureParking:
                     capacity=cap_i,
                     available_spaces=avail_i,
                     availability_ratio=ratio,
-                    status=ParkingStatus.OPEN if (avail_i or 0) > 0 else ParkingStatus.FULL,
+                    status=ParkingStatus.UNKNOWN
+                    if avail_i is None
+                    else ParkingStatus.OPEN
+                    if avail_i > 0
+                    else ParkingStatus.FULL,
                     distance_m=d,
-                    realtime=True,
-                    observed_at=now_paris(),
+                    realtime=avail_i is not None,
+                    observed_at=now_paris() if avail_i is not None else None,
                 )
             )
         out.sort(key=lambda p: p.distance_m or 0)
