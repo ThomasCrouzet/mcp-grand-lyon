@@ -36,6 +36,7 @@ jobs:
         with:
           name: quality-python-${{ matrix.python-version }}
           path: ${{ runner.temp }}/quality-evidence
+          include-hidden-files: true
           if-no-files-found: error
 
   build:
