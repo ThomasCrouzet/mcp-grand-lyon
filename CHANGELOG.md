@@ -25,6 +25,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   coverage, and logs. CI uploads quality and protocol evidence on failure too.
 - `GRAND_LYON_MCP_FIXTURES_DIR` for alternate local fixture sets.
 
+### CI maintenance
+
+- Use CodeQL Action v4 and pin runners to Ubuntu 24.04. Remove the deprecated
+  Node.js 20 actions and the implicit runner-image migration.
+
 ### Documentation
 
 - Consolidate setup and runtime procedures in maintained English guides.
