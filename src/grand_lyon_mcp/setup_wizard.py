@@ -417,9 +417,9 @@ def run_setup(
     if want_account:
         if has_saved:
             _print(
-                f"Identifiant déjà enregistré : [cyan]{username}[/cyan]"
+                "Identifiant déjà enregistré : [cyan][set][/cyan]"
                 if _has_rich()
-                else f"Identifiant déjà enregistré : {username}"
+                else "Identifiant déjà enregistré : [set]"
             )
             if not _confirm("Conserver ces identifiants ?", default=True):
                 username = ""
@@ -493,15 +493,14 @@ def run_setup(
     mode_label = "offline (fixtures)" if mode_offline else "live (DataGrandLyon)"
     summary = (
         f"  Mode          : [bold]{mode_label}[/bold]\n"
-        f"  Identifiant   : {username if username else '(aucun)'}\n"
-        f"  Mot de passe  : {'••••••••' if password else '(aucun)'}\n"
+        f"  Identifiant   : {'[set]' if username else '(aucun)'}\n"
         f"  Config        : {config_dir}\n"
         f"  Données       : {data_dir}\n"
         f"  Secrets       : {secrets_path}\n"
         f"  Log           : {log_level}\n"
         f"  Transitous    : {'oui' if transitous else 'non'}"
     )
-    plain = f"Mode={mode_label} user={username or '-'} cfg={config_dir}"
+    plain = f"Mode={mode_label} user={'[set]' if username else '-'} cfg={config_dir}"
     _print(summary if _has_rich() else plain)
 
     if not _confirm("Écrire la configuration et finaliser ?", default=True):
@@ -672,10 +671,8 @@ def show_env_status() -> dict[str, Any]:
     def mask(key: str, val: str) -> str:
         if not val:
             return "(vide)"
-        if key in {"DATAGRANDLYON_PASSWORD"}:
+        if key in {"DATAGRANDLYON_USERNAME", "DATAGRANDLYON_PASSWORD"}:
             return "[set]"
-        if key in {"DATAGRANDLYON_USERNAME"}:
-            return val  # login is useful to see; not a secret key
         return val
 
     return {

@@ -44,6 +44,20 @@ def test_doctor_no_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert "OK" in result.stdout or "WARNING" in result.stdout
 
 
+def test_env_redacts_account_identifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    username = "sensitive-account@example.test"
+    monkeypatch.setenv("GRAND_LYON_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("DATAGRANDLYON_USERNAME", username)
+    monkeypatch.setenv("DATAGRANDLYON_PASSWORD", "sensitive-password")
+
+    result = runner.invoke(app, ["env"])
+
+    assert result.exit_code == 0
+    assert username not in result.stdout
+    assert "sensitive-password" not in result.stdout
+    assert result.stdout.count("[set]") >= 2
+
+
 def test_smoke_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GRAND_LYON_MCP_DB_PATH", str(tmp_path / "cli.db"))
     monkeypatch.setenv("GRAND_LYON_MCP_DATA_DIR", str(tmp_path / "data"))
