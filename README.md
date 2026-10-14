@@ -4,9 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
-A local MCP server for Métropole de Lyon open data. It provides **ten read-only
-tools** for TCL departures, parking, accessibility, facilities, waste, travel
-options, and personal briefings. It uses Vélo'v data in travel options and briefings.
+A local MCP server for **Métropole de Lyon open data**. Ten read-only tools
+provide TCL departures, parking, accessibility, facilities, waste, travel
+options, and personal briefings. Travel options and briefings also use Vélo'v data.
+
+![Ten MCP tools use application services, local SQLite data, and either fixture or live providers. GTFS fallback stays theoretical.](docs/diagrams/data-flow.svg)
 
 The server uses **stdio**. Application logs go to stderr. Tool summaries are in
 French. It runs with local fixtures when offline mode is enabled or DataGrandLyon
@@ -18,15 +20,15 @@ Requirements: Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
 CI checks Python 3.12 and 3.13. A DataGrandLyon account is optional.
 
 ```bash
-git clone git@github.com:ThomasCrouzet/mcp-grand-lyon.git
+git clone https://github.com/ThomasCrouzet/mcp-grand-lyon.git
 cd mcp-grand-lyon
 uv sync --locked --all-extras --dev
 uv run grand-lyon-mcp setup --yes --offline --skip-install
 ```
 
-The setup command copies packaged configuration templates and migrates the local
-SQLite database. For interactive live setup, run `uv run grand-lyon-mcp setup`.
-It stores credentials in a user configuration file with mode `600`.
+Setup copies packaged configuration templates and migrates the local SQLite database.
+For interactive live setup, run `uv run grand-lyon-mcp setup`.
+Live setup stores credentials in a user configuration file with mode `0600`.
 
 Import the packaged demonstration stops and timetable:
 
@@ -108,8 +110,9 @@ make quality
 ```
 
 The quality gate checks formatting, lint, strict types, and offline tests with an
-85% coverage minimum. The installed-wheel protocol checks start real CLI and MCP
-processes and retain exact results. CI uploads both quality and protocol evidence.
+85% coverage minimum. Separate installed-wheel checks start CLI and MCP processes
+outside the checkout. They require nonempty fixture results and retain protocol transcripts.
+CI uploads quality and protocol evidence.
 See [Testing](docs/testing.md) and [Contributing](CONTRIBUTING.md).
 
 ## Limits and privacy

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="640" viewBox="0 0 1120 640" role="img" aria-labelledby="title desc">
+  <title id="title">Grand Lyon MCP data providers and fallback</title>
+  <desc id="desc">Ten stdio MCP tools use application services. Startup selects packaged fixture providers when offline or without DataGrandLyon credentials; otherwise it selects live providers. Services use local SQLite data, including GTFS for theoretical departure fallback. Results retain source, freshness, and missing-data warnings.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#b55445"/></marker>
+    <style>text{font-family:Arial,Helvetica,sans-serif;fill:#482d2b}.title{font-size:30px;font-weight:700}.label{font-size:20px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#785b58}.eyebrow{font-size:13px;font-weight:700;letter-spacing:2px;fill:#a3493d}.box{fill:#fff;stroke:#e6cfca;stroke-width:1.5}.line{fill:none;stroke:#b55445;stroke-width:2;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1120" height="640" rx="24" fill="#fcf6f3"/>
+  <text x="40" y="39" class="eyebrow">GRAND LYON MCP / DATA SOURCES</text>
+  <text x="40" y="79" class="title">Local tools with explicit data quality.</text>
+  <path d="M40 106H1080" stroke="#e6cfca"/>
+  <rect x="40" y="151" width="230" height="118" rx="14" class="box"/>
+  <text x="62" y="187" class="label">MCP client</text>
+  <text x="62" y="221" class="body">stdio / ten read-only tools</text>
+  <text x="62" y="248" class="small">French tool summaries</text>
+  <path d="M270 210H338" class="line"/>
+  <rect x="340" y="151" width="316" height="118" rx="14" class="box"/>
+  <text x="362" y="187" class="label">Application services</text>
+  <text x="362" y="221" class="body">Mobility / places / local facilities</text>
+  <text x="362" y="248" class="small">Domain models + provider protocols</text>
+  <path d="M656 210H718V187H766" class="line"/>
+  <path d="M718 210V326H766" class="line"/>
+  <rect x="768" y="141" width="312" height="112" rx="14" class="box"/>
+  <text x="790" y="177" class="label">Packaged fixtures</text>
+  <text x="790" y="209" class="body">Offline or no DGL credentials</text>
+  <text x="790" y="235" class="small">Fixed demonstration dates</text>
+  <rect x="768" y="281" width="312" height="148" rx="14" class="box"/>
+  <text x="790" y="317" class="label">Live providers</text>
+  <text x="790" y="350" class="body">DataGrandLyon + Photon</text>
+  <text x="790" y="378" class="body">Transitous routing: opt-in</text>
+  <text x="790" y="407" class="small">Bounded HTTP / cache / retry</text>
+  <path d="M498 269V345" class="line"/>
+  <rect x="340" y="347" width="316" height="126" rx="14" fill="#f4e5df"/>
+  <text x="362" y="383" class="label">Local SQLite</text>
+  <text x="362" y="415" class="body">GTFS / profiles / source health</text>
+  <text x="362" y="444" class="body">HTTP cache / Vélo'v history</text>
+  <path d="M340 410H304V247H338" class="line"/>
+  <text x="40" y="449" class="small">GTFS departure fallback:</text>
+  <text x="40" y="472" class="small">always theoretical</text>
+  <path d="M40 513H1080" stroke="#e6cfca"/>
+  <text x="40" y="552" class="label">Response contract</text>
+  <text x="40" y="585" class="body">Source + freshness + warnings</text>
+  <text x="432" y="552" class="body">Parking capacity is not availability.</text>
+  <text x="432" y="585" class="body">Missing accessibility evidence stays unknown.</text>
+</svg>
