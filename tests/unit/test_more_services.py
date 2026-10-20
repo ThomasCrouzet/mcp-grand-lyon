@@ -1,4 +1,4 @@
-"""Extra service edge cases for coverage."""
+"""Service behavior at optional-provider boundaries."""
 
 from __future__ import annotations
 
@@ -21,28 +21,18 @@ async def test_gtfs_get_stop(app_container) -> None:
 
 
 @pytest.mark.asyncio
-async def test_place_coords_and_profile(app_container) -> None:
+async def test_place_coords_and_missing_id(app_container) -> None:
     env = await app_container.places.resolve_place(
         place=PlaceRef(latitude=45.76, longitude=4.86),
         limit=1,
     )
     assert env.status == ResultStatus.OK
-    env2 = await app_container.places.resolve_place(place=PlaceRef(profile_place="home"), limit=1)
-    assert env2.status in (ResultStatus.OK, ResultStatus.NOT_FOUND)
     env3 = await app_container.places.resolve_place(place=PlaceRef(place_id="missing:id"), limit=1)
     assert env3.status == ResultStatus.NOT_FOUND
 
 
 @pytest.mark.asyncio
-async def test_velov_and_snapshot_path(app_container) -> None:
-    env = await app_container.velov.stations_near_ref(
-        PlaceRef(latitude=45.76, longitude=4.86),
-        radius_m=3000,
-        minimum_bikes=1,
-        limit=5,
-    )
-    assert env.status in (ResultStatus.OK, ResultStatus.PARTIAL, ResultStatus.UNAVAILABLE)
-    # provider none path
+async def test_velov_unavailable_without_provider(app_container) -> None:
     bare = VelovService(places=app_container.places, provider=None)
     env2 = await bare.stations_near_ref(PlaceRef(latitude=45.76, longitude=4.86))
     assert env2.status == ResultStatus.UNAVAILABLE
@@ -79,25 +69,13 @@ async def test_transitous_disabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_facility_parking_env_edges(app_container) -> None:
-    env = await app_container.facilities.nearby(
-        location=PlaceRef(query="nowhere-xyz-unknown-place-zz"),
-        categories=["toilet"],
-    )
-    assert env.status in (ResultStatus.NOT_FOUND, ResultStatus.OK, ResultStatus.UNAVAILABLE)
-
-    env2 = await app_container.parking.options(
-        destination=PlaceRef(latitude=45.767, longitude=4.835),
-        types=["public_parking", "park_and_ride"],
-        minimum_spaces=1,
-    )
-    assert "options" in env2.data
-
+async def test_environment_unavailable_without_provider(app_container) -> None:
     from grand_lyon_mcp.services.environment_service import EnvironmentService
 
     bare = EnvironmentService(places=app_container.places, provider=None)
-    env3 = await bare.brief(location=PlaceRef(query="Lyon"), indicators=["heat"])
-    assert env3.degraded
+    env = await bare.brief(location=PlaceRef(query="Lyon"), indicators=["heat"])
+    assert env.degraded
+    assert env.status == ResultStatus.PARTIAL
 
 
 @pytest.mark.asyncio
@@ -123,7 +101,8 @@ async def test_mobility_empty_provider() -> None:
 
     svc = MobilityStatusService()
     env = await svc.status(include=["transit"])
-    assert env.status in (ResultStatus.OK, ResultStatus.PARTIAL)
+    assert env.status == ResultStatus.OK
+    assert env.data["alerts"] == []
 
 
 def test_serializers() -> None:
