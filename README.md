@@ -112,7 +112,7 @@ make quality
 The quality gate checks formatting, lint, strict types, and offline tests with an
 85% coverage minimum. Separate installed-wheel checks start CLI and MCP processes
 outside the checkout. They require nonempty fixture results and retain protocol transcripts.
-CI uploads quality and protocol evidence.
+CI keeps quality and protocol evidence in runner temporary storage.
 See [Testing](docs/testing.md) and [Contributing](CONTRIBUTING.md).
 
 ## Limits and privacy

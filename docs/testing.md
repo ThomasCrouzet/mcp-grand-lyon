@@ -2,6 +2,7 @@
 
 Run the offline quality checks from `AGENTS.md`. Keep the 85% coverage gate.
 Coverage shows executed code. It does not prove correct service results.
+Keep generated reports in local storage. Do not upload reports to GitHub.
 
 For a quality report with source identity, fixture hashes, JUnit, and coverage:
 
@@ -29,7 +30,7 @@ This check does not establish live upstream availability.
 
 The report records the command, revision, working diff identity, environment,
 wheel and fixture hashes, results, and protocol transcript. Failed runs also
-write a report. CI uploads the evidence even when an assertion fails.
+write a report. CI keeps this evidence in runner temporary storage.
 
 ## Retained failure cases
 
