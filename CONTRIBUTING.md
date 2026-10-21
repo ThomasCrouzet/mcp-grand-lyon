@@ -23,6 +23,8 @@ GRAND_LYON_MCP_OFFLINE=true uv run --offline --no-sync pytest -m "not live" --co
 that retain quality reports and installed-wheel MCP transcripts. CI must pass
 for Python 3.12 and 3.13. Keep the 85% coverage minimum.
 
+Keep generated reports in local storage. Do not upload reports to GitHub.
+
 ## Change rules
 
 - Follow the testing policy in `AGENTS.md`. Write necessary isolated tests before

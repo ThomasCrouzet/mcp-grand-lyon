@@ -5,7 +5,7 @@ What problem does this change solve?
 ## Verification
 
 - Quality command and result:
-- Relevant behavior checks and evidence artifacts:
+- Relevant behavior checks and local evidence path:
 - Source revision or working diff identity:
 
 Follow the testing policy in `AGENTS.md`. Keep the ten read-only tools and layer

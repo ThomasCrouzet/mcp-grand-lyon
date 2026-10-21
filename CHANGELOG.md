@@ -22,13 +22,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Automatic count and byte limits for HTTP cache storage, source-health retention,
   and explicit stale-read warnings.
 - Sequential quality verification with source identity, fixture hashes, JUnit,
-  coverage, and logs. CI uploads quality and protocol evidence on failure too.
+  coverage, and logs. CI keeps generated evidence in runner temporary storage.
 - `GRAND_LYON_MCP_FIXTURES_DIR` for alternate local fixture sets.
 
 ### CI maintenance
 
 - Use CodeQL Action v4 and pin runners to Ubuntu 24.04. Remove the deprecated
   Node.js 20 actions and the implicit runner-image migration.
+- Keep verification reports in local or runner temporary storage. Disable CodeQL
+  uploads while retaining analysis.
 
 ### Documentation
 

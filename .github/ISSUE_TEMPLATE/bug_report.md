@@ -24,5 +24,5 @@ Include the MCP request or CLI command, arguments, and fixture data if applicabl
 
 ## Evidence
 
-Attach relevant stderr logs or a verification report. Remove credentials and
-personal data before you submit the issue.
+Include a minimal relevant stderr excerpt. Keep generated reports in local storage.
+Remove credentials and personal data before you submit the issue.

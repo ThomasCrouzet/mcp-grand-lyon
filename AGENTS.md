@@ -42,6 +42,6 @@ Keep isolated checks for source parsing, strict transit filters, fallback accura
 Also keep storage, retry, concurrency, taxonomy, scoring, setup, and custom validation checks absent from the permissive dispatch assertions.
 Add `--junitxml="$ARTIFACT_DIR/results.xml"` to retain pytest results in a dedicated external directory.
 `scripts/verify_quality.py --artifact-dir "$ARTIFACT_DIR"` runs the quality gate sequentially and retains source identity, fixture hashes, JUnit, coverage, and logs. Use a new external artifact directory for each runner invocation.
-CI saves quality reports and installed-wheel protocol transcripts, including failed runs. Coverage measures execution, not complete user behavior. Offline process tests use fixture providers; retain HTTP-fixture checks for live mapping and isolated resource-state and storage-retention checks.
+CI runs these checks without uploading reports. Keep generated reports and installed-wheel protocol transcripts in local storage. Coverage measures execution, not complete user behavior. Offline process tests use fixture providers; retain HTTP-fixture checks for live mapping and isolated resource-state and storage-retention checks.
 `scripts/live_smoke.py` writes `$LIVE_OUT/live_report.json`, with `/tmp/grand-lyon-live-tests` as its default directory.
 That live diagnostic accepts all tool status values, including errors. It does not prove successful service results.

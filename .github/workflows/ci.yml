@@ -37,15 +37,7 @@ jobs:
             mypy-ubuntu24.04-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-
       - name: Offline quality gate with evidence
         run: uv run --no-sync python scripts/verify_quality.py --artifact-dir "$RUNNER_TEMP/quality-evidence"
-      - name: Upload quality evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: quality-python-${{ matrix.python-version }}
-          path: ${{ runner.temp }}/quality-evidence
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
+      # Keep generated reports in runner temporary storage. Do not upload them.
 
   build:
     runs-on: ubuntu-24.04
@@ -70,16 +62,6 @@ jobs:
           UV_CONCURRENT_BUILDS: "1"
           UV_CONCURRENT_DOWNLOADS: "2"
           UV_CONCURRENT_INSTALLS: "2"
-      - name: Upload protocol evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: wheel-protocol-evidence
-          path: |
-            ${{ runner.temp }}/wheel-evidence
-            !${{ runner.temp }}/wheel-evidence/venv/**
-          if-no-files-found: error
-          retention-days: 7
       - name: Upload distributions
         uses: actions/upload-artifact@v7
         with:
