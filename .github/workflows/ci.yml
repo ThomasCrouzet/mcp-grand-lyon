@@ -45,6 +45,7 @@ jobs:
           path: ${{ runner.temp }}/quality-evidence
           include-hidden-files: true
           if-no-files-found: error
+          retention-days: 7
 
   build:
     runs-on: ubuntu-24.04
@@ -78,11 +79,13 @@ jobs:
             ${{ runner.temp }}/wheel-evidence
             !${{ runner.temp }}/wheel-evidence/venv/**
           if-no-files-found: error
+          retention-days: 7
       - name: Upload distributions
         uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
+          retention-days: 3
 
   gitleaks:
     runs-on: ubuntu-24.04
