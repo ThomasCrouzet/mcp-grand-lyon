@@ -3,14 +3,8 @@ name: CodeQL
 on:
   push:
     branches: [main, master]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
   pull_request:
     branches: [main, master]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
   schedule:
     - cron: "0 6 * * 1"
 
@@ -23,21 +17,26 @@ concurrency:
 
 jobs:
   analyze:
-    # Le code scanning (CodeQL) n'est disponible que sur les dépôts publics
-    # (ou privés avec GitHub Advanced Security). On saute proprement le job tant
-    # que le dépôt est privé ; il s'exécutera automatiquement une fois public.
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
     steps:
       - uses: actions/checkout@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          cache: true
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: python
-      - name: Perform CodeQL Analysis
+          languages: go
+      - name: Build CodeQL database
+        uses: github/codeql-action/autobuild@v4
+      - name: Perform CodeQL analysis
         id: analyze
         uses: github/codeql-action/analyze@v4
         with:

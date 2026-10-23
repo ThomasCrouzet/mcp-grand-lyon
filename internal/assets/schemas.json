@@ -1,0 +1,1306 @@
+{
+  "lyon_resolve_place": {
+    "name": "lyon_resolve_place",
+    "description": "Resolve an address, TCL stop, Vélo'v station, district, or personal place in Lyon. Use this tool to resolve ambiguous locations before other tools.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        },
+        "near": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlaceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Types"
+        },
+        "limit": {
+          "default": 5,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "ResolvePlaceInput",
+      "type": "object"
+    }
+  },
+  "lyon_next_departures": {
+    "name": "lyon_next_departures",
+    "description": "Get upcoming TCL departures at a stop or station. Use lyon_trip_options to compare complete trips. Examine warnings and realtime flags before using departure times.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "stop": {
+          "$ref": "#/$defs/PlaceRef"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "limit": {
+          "default": 6,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "stop"
+      ],
+      "title": "NextDeparturesInput",
+      "type": "object"
+    }
+  },
+  "lyon_mobility_status": {
+    "name": "lyon_mobility_status",
+    "description": "Get TCL alerts, accessibility incidents, traffic conditions, and roadworks. Use lyon_next_departures for departure times at a specific stop.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lines"
+        },
+        "areas": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PlaceRef"
+              },
+              "maxItems": 10,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Areas"
+        },
+        "include": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include"
+        }
+      },
+      "title": "MobilityStatusInput",
+      "type": "object"
+    }
+  },
+  "lyon_trip_options": {
+    "name": "lyon_trip_options",
+    "description": "Compare TCL, Vélo'v, park-and-ride, car, and walking options between two places. Examine warnings, timing, and accessibility evidence before selecting an option.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        },
+        "TravelMode": {
+          "enum": [
+            "tcl",
+            "velov",
+            "park_and_ride",
+            "car",
+            "walk"
+          ],
+          "title": "TravelMode",
+          "type": "string"
+        },
+        "TripPreferences": {
+          "additionalProperties": false,
+          "properties": {
+            "max_walking_m": {
+              "default": 800,
+              "maximum": 5000,
+              "minimum": 0,
+              "title": "Max Walking M",
+              "type": "integer"
+            },
+            "minimum_velov_bikes": {
+              "default": 3,
+              "maximum": 50,
+              "minimum": 0,
+              "title": "Minimum Velov Bikes",
+              "type": "integer"
+            },
+            "minimum_velov_docks": {
+              "default": 3,
+              "maximum": 50,
+              "minimum": 0,
+              "title": "Minimum Velov Docks",
+              "type": "integer"
+            },
+            "avoid_disruptions": {
+              "default": true,
+              "title": "Avoid Disruptions",
+              "type": "boolean"
+            },
+            "wheelchair": {
+              "default": false,
+              "title": "Wheelchair",
+              "type": "boolean"
+            }
+          },
+          "title": "TripPreferences",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "$ref": "#/$defs/PlaceRef"
+        },
+        "destination": {
+          "$ref": "#/$defs/PlaceRef"
+        },
+        "departure_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Departure At"
+        },
+        "arrival_before": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arrival Before"
+        },
+        "modes": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TravelMode"
+              },
+              "maxItems": 5,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modes"
+        },
+        "preferences": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TripPreferences"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "origin",
+        "destination"
+      ],
+      "title": "TripOptionsInput",
+      "type": "object"
+    }
+  },
+  "lyon_parking_options": {
+    "name": "lyon_parking_options",
+    "description": "Find public parking and park-and-ride facilities near a destination. Available spaces are included when known. Missing availability does not mean zero.",
+    "inputSchema": {
+      "$defs": {
+        "ParkingType": {
+          "enum": [
+            "public_parking",
+            "park_and_ride"
+          ],
+          "title": "ParkingType",
+          "type": "string"
+        },
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/PlaceRef"
+        },
+        "types": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ParkingType"
+              },
+              "maxItems": 5,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Types"
+        },
+        "radius_m": {
+          "default": 1500,
+          "maximum": 5000,
+          "minimum": 50,
+          "title": "Radius M",
+          "type": "integer"
+        },
+        "minimum_spaces": {
+          "default": 0,
+          "maximum": 500,
+          "minimum": 0,
+          "title": "Minimum Spaces",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 10,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "destination"
+      ],
+      "title": "ParkingOptionsInput",
+      "type": "object"
+    }
+  },
+  "lyon_accessibility_check": {
+    "name": "lyon_accessibility_check",
+    "description": "Check wheelchair and step-free accessibility evidence for stops or a trip. Missing data does not establish accessibility.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlaceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlaceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "stops": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PlaceRef"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stops"
+        },
+        "needs": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "wheelchair",
+                  "step_free"
+                ],
+                "type": "string"
+              },
+              "maxItems": 2,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Needs"
+        }
+      },
+      "title": "AccessibilityCheckInput",
+      "type": "object"
+    }
+  },
+  "lyon_nearby_facilities": {
+    "name": "lyon_nearby_facilities",
+    "description": "Find nearby toilets, drinking-water fountains, parks, bicycle pumps, and Vélo'v stations.",
+    "inputSchema": {
+      "$defs": {
+        "FacilityCategory": {
+          "enum": [
+            "toilet",
+            "drinking_water",
+            "park",
+            "garden",
+            "bike_pump",
+            "velov_station",
+            "waste_facility"
+          ],
+          "title": "FacilityCategory",
+          "type": "string"
+        },
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "$ref": "#/$defs/PlaceRef"
+        },
+        "categories": {
+          "items": {
+            "$ref": "#/$defs/FacilityCategory"
+          },
+          "maxItems": 7,
+          "minItems": 1,
+          "title": "Categories",
+          "type": "array"
+        },
+        "radius_m": {
+          "default": 1000,
+          "maximum": 5000,
+          "minimum": 50,
+          "title": "Radius M",
+          "type": "integer"
+        },
+        "open_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open At"
+        },
+        "limit_per_category": {
+          "default": 5,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Limit Per Category",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "location",
+        "categories"
+      ],
+      "title": "NearbyFacilitiesInput",
+      "type": "object"
+    }
+  },
+  "lyon_environment_brief": {
+    "name": "lyon_environment_brief",
+    "description": "Get available pollen, air-quality, and heat indicators for an area. Warnings identify indicators without a configured source.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "$ref": "#/$defs/PlaceRef"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "indicators": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Indicators"
+        }
+      },
+      "required": [
+        "location"
+      ],
+      "title": "EnvironmentBriefInput",
+      "type": "object"
+    }
+  },
+  "lyon_waste_dropoff": {
+    "name": "lyon_waste_dropoff",
+    "description": "Classify an item with the configured waste taxonomy and find suitable collection facilities. Examine acceptance and opening-hours warnings.",
+    "inputSchema": {
+      "$defs": {
+        "PlaceRef": {
+          "additionalProperties": false,
+          "description": "Exactly one of place_id, query, coordinates, or profile_place.",
+          "properties": {
+            "place_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Place Id"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "latitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Latitude"
+            },
+            "longitude": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Longitude"
+            },
+            "profile_place": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Profile Place"
+            }
+          },
+          "title": "PlaceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Item",
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlaceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "transport": {
+          "const": "car",
+          "default": "car",
+          "title": "Transport",
+          "type": "string"
+        },
+        "open_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open At"
+        },
+        "radius_m": {
+          "default": 15000,
+          "maximum": 50000,
+          "minimum": 100,
+          "title": "Radius M",
+          "type": "integer"
+        },
+        "limit": {
+          "default": 10,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "WasteDropoffInput",
+      "type": "object"
+    }
+  },
+  "lyon_personal_briefing": {
+    "name": "lyon_personal_briefing",
+    "description": "Build a briefing from a local commute profile, alerts, and Vélo'v data. The calling client controls scheduling and notification delivery.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Profile",
+          "type": "string"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "compare_with_previous": {
+          "default": true,
+          "title": "Compare With Previous",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "title": "PersonalBriefingInput",
+      "type": "object"
+    }
+  }
+}

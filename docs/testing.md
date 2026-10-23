@@ -1,54 +1,148 @@
 # Repeatable verification
 
-Run the offline quality checks from `AGENTS.md`. Keep the 85% coverage gate.
-Coverage shows executed code. It does not prove correct service results.
-Keep generated reports in local storage. Do not upload reports to GitHub.
+## Quality gate
 
-For a quality report with source identity, fixture hashes, JUnit, and coverage:
+Run the complete local gate:
 
 ```bash
-uv run --no-sync python scripts/verify_quality.py --artifact-dir "$QUALITY_ARTIFACT_DIR"
+make quality
 ```
 
-The directory must not exist. Both runners execute checks sequentially. On a
-shared machine, set `UV_CONCURRENT_BUILDS=1`, `UV_CONCURRENT_DOWNLOADS=2`, and
-`UV_CONCURRENT_INSTALLS=2` to limit wheel installation concurrency.
+The gate checks formatting, module consistency, Go diagnostics, race-enabled tests, and known vulnerabilities.
+It runs `govulncheck` version `v1.9.0`.
 
-## Installed-wheel protocol checks
-
-Run this command with a new external artifact directory:
+Run focused checks when necessary:
 
 ```bash
-uv run --no-sync python scripts/verify_wheel.py --artifact-dir "$ARTIFACT_DIR"
+make format-check
+make vet
+make test
+make vulnerability
 ```
 
-The runner builds and installs a wheel with locked runtime dependencies. It
-starts CLI and MCP processes outside the checkout. It checks initialization,
-the ten public tools, nonempty place results, exact departures, parking filters,
-startup failure, and EOF shutdown. All provider data is local fixture data.
-This check does not establish live upstream availability.
+`make test` creates a new external evidence directory by default.
+Set `GLMCP_ARTIFACT_DIR` to select a new external base path.
+The selected path must not exist when `make test` starts.
+The target instruments the application binary and enforces 85% application coverage.
+The gate excludes the MCP adapter, CLI, and live-provider boundaries.
+These exclusions match the earlier coverage scope.
+The report also shows unfiltered internal-package coverage.
 
-The report records the command, revision, working diff identity, environment,
-wheel and fixture hashes, results, and protocol transcript. Failed runs also
-write a report. CI keeps this evidence in runner temporary storage.
+Keep reports in local storage.
+Do not upload test reports or protocol transcripts to GitHub.
 
-## Retained failure cases
+## Live diagnostic
 
-- Startup: invalid configuration, failed migrations, cancellation, and failure
-  during resource close must release acquired resources.
-- Transit: reject wrong lines and directions. Apply service calendars and date
-  exceptions. Include previous-day times above 24 hours and next-day service.
-  Use the GTFS service-day origin (local noon minus twelve elapsed hours) at
-  both DST changes. Apply result limits after time and line filters.
-- Parking: keep zero separate from missing occupancy. Capacity is not available
-  space. Enforce radius and type filters. Report mixed availability as partial.
-- Storage: remove data after its maximum stale age. Bound both entry count and
-  UTF-8 payload bytes. Keep an explicit warning for permitted stale reads.
-  Retain source health by the latest event and by entry count.
-- Live providers: refresh in-memory parking and Velo'v data after their TTL.
+Run the live diagnostic from the repository worktree:
 
-Isolated checks use real SQLite connections and HTTP fixtures where process
-tests cannot inspect resource state or exercise live provider mapping. These
-checks supplement the protocol evidence. They do not replace it.
+```bash
+go run ./scripts/live-smoke \
+  --binary /absolute/path/grand-lyon-mcp \
+  --artifact-dir /new/external/live-evidence \
+  --timeout 2m \
+  --sync-gtfs
+```
 
-For a retained pytest result, add `--junitxml="$ARTIFACT_DIR/results.xml"`.
+`--binary` selects the executable under test.
+`--artifact-dir` must select a new path outside the repository.
+`--timeout` accepts values from 10 seconds through 10 minutes.
+The default timeout is two minutes.
+
+`--sync-gtfs` downloads and imports GTFS into the isolated test database.
+The diagnostic records the public command output and continues MCP checks after a synchronization failure.
+
+Use an existing live archive instead of downloading one:
+
+```bash
+go run ./scripts/live-smoke \
+  --binary /absolute/path/grand-lyon-mcp \
+  --artifact-dir /new/external/live-evidence \
+  --gtfs-from-file /absolute/path/GTFS_TCL.ZIP
+```
+
+`--gtfs-from-file` and `--sync-gtfs` are mutually exclusive.
+Each run imports into a new isolated database.
+The report records the archive path, size, and SHA-256 digest under `gtfs_archive`.
+
+The diagnostic reads credentials from the user configuration.
+It does not record credentials or the child environment.
+It writes `live-report.json` with mode `0600`.
+
+The parking freshness check is separate from static parking rows.
+Verification requires numeric realtime availability observed within five minutes.
+A `not_found` result becomes `not_verified`, which makes the diagnostic partial.
+
+Exit code `0` means every live check is verified.
+Exit code `2` means the result is partial or a source is unavailable.
+Exit code `2` also reports a command usage error.
+Exit code `1` means the diagnostic failed.
+A partial result is not complete live verification.
+
+## Process-level acceptance checks
+
+Run the E2E package directly:
+
+```bash
+GLMCP_ARTIFACT_DIR=/new/external/base go test -count=1 -v ./tests/e2e
+```
+
+Without `GLMCP_BINARY`, the harness builds the executable once in its evidence directory.
+It starts every CLI and MCP process outside the checkout.
+
+Test a previously built release binary:
+
+```bash
+GLMCP_BINARY=/absolute/path/grand-lyon-mcp \
+GLMCP_ARTIFACT_DIR=/new/external/base \
+go test -count=1 -v ./tests/e2e
+```
+
+The installed-binary suite verifies these behaviors:
+
+- Setup does not write into the installation directory.
+- `secrets.env` uses mode `0600` on Unix systems.
+- Process environment values override stored values.
+- Generated MCP configuration contains no credentials.
+- MCP exposes exactly ten tools.
+- Every tool returns asserted fixture data.
+- Offline results carry warning, provenance, degradation, and simulated realtime markers.
+- Dated GTFS fallback handles calendars, midnight, and DST folds.
+- Strict stop and line filters reject unrelated realtime records.
+- Parking keeps zero availability separate from missing availability.
+- Accessibility preserves incident and GTFS evidence.
+- Waste checks preserve unknown acceptance and dated opening hours.
+- Failed GTFS import preserves the prior timetable.
+- Invalid YAML and invalid SQLite data stop startup.
+- Setup rejects unsafe destination files.
+- Configuration rejects nonfinite values.
+- MCP rejects invalid references, control payloads, and oversized frames.
+- Signals stop the server cleanly.
+- MCP exits successfully after stdin reaches EOF.
+
+Each run writes `report.json`, `working.patch`, command records, and protocol transcripts.
+The report includes the source revision, working-tree identity, binary hash, fixture hashes, environment, and results.
+Failed runs also retain evidence.
+
+Set `GLMCP_COVERAGE_DIR` to an external path for raw Go coverage counters.
+The default harness build instruments all packages in this module.
+Each child process receives that directory through `GOCOVERDIR`.
+An external `GLMCP_BINARY` must already contain coverage instrumentation.
+
+## Isolated checks
+
+Keep isolated tests only for failures that process results cannot show.
+Current exceptions cover parsers, resource closure, storage state, retention, concurrency, and bounded HTTP transfers.
+These tests use real SQLite connections and local HTTP servers.
+They do not replace the process-level suite.
+
+## Release verification
+
+Build release archives in a new external directory:
+
+```bash
+make release RELEASE_DIR=/new/external/release-directory
+```
+
+Extract a release archive.
+Run the E2E package with `GLMCP_BINARY` set to the extracted executable.
+This check verifies the archive's actual binary, not a new source build.

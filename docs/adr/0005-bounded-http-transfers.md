@@ -8,8 +8,8 @@ The shared client permits only configured HTTPS hosts on port 443.
 It rejects URL credentials and fragments before network access.
 It applies the same policy to every redirect and permits at most five redirects.
 It closes redirect bodies without buffering them.
-HTTPX removes authentication when the redirect origin changes.
-The client does not reapply that authentication or use environment proxies.
+The client removes authentication when the redirect origin changes.
+It does not reapply that authentication or use environment proxies.
 
 A 60-second deadline covers queue waits, retries, redirects, and body consumption.
 Normal API responses have an 8 MiB body limit.
@@ -32,8 +32,8 @@ The importer still materializes CSV dictionaries; this decision does not establi
 
 ## Validation
 
-Run the synthetic transport and publication tests:
+Run the bounded-client tests:
 
 ```sh
-uv run --locked pytest tests/integration/test_http_bounds.py
+go test -race -count=1 ./internal/httpclient
 ```

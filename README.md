@@ -2,65 +2,72 @@
 
 [![CI](https://github.com/ThomasCrouzet/mcp-grand-lyon/actions/workflows/ci.yml/badge.svg)](https://github.com/ThomasCrouzet/mcp-grand-lyon/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14%20%7C%203.15-blue.svg)](pyproject.toml)
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8.svg)](go.mod)
 
-A local MCP server for **Métropole de Lyon open data**. Ten read-only tools
-provide TCL departures, parking, accessibility, facilities, waste, travel
-options, and personal briefings. Travel options and briefings also use Vélo'v data.
+Grand Lyon MCP is a local MCP server for Métropole de Lyon open data.
+Ten read-only tools provide departures, parking, accessibility, facilities, waste guidance, travel options, and personal briefings.
 
-![Ten MCP tools use application services, local SQLite data, and either fixture or live providers. GTFS fallback stays theoretical.](docs/diagrams/data-flow.svg)
+![Ten MCP tools use application services, local SQLite data, and embedded or live providers. GTFS fallback stays theoretical.](docs/diagrams/data-flow.svg)
 
-The server uses **stdio**. Application logs go to stderr. Tool summaries are in
-French. It runs with local fixtures when offline mode is enabled or DataGrandLyon
-credentials are absent.
+The native Go binary uses MCP over stdio.
+It includes configuration templates, SQLite migrations, schemas, and demonstration fixtures.
+It does not require Python, a virtual environment, or a source checkout.
 
-## Install a release
+## Install release 0.2.0
 
-Requirements: Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
+Download the archive for your platform from [GitHub Releases](https://github.com/ThomasCrouzet/mcp-grand-lyon/releases).
+Download `SHA256SUMS` from the same release.
+Verify the archive checksum before extraction.
+
+Release archives support these targets:
+
+| Operating system | Architectures | Format |
+| --- | --- | --- |
+| Linux | `amd64`, `arm64` | `.tar.gz` |
+| macOS | `amd64`, `arm64` | `.tar.gz` |
+| Windows | `amd64` | `.zip` |
+
+Archive names use `grand-lyon-mcp_0.2.0_<os>_<architecture>`.
+
+Extract the archive.
+Move `grand-lyon-mcp` or `grand-lyon-mcp.exe` to a directory in `PATH`.
+
+Configure a local offline installation:
 
 ```bash
-uv tool install grand-lyon-mcp
 grand-lyon-mcp setup --yes --offline
+grand-lyon-mcp doctor
 grand-lyon-mcp client-config
 ```
 
-Setup enables the packaged demonstration fixtures and migrates the local database.
-See [MCP clients](docs/mcp-clients.md) for live credentials and other clients.
+Setup writes user configuration and migrates the local SQLite database.
+It also writes `mcp-client.snippet.json` in the configuration directory.
+The binary uses embedded fixtures when offline mode is active.
 
-## Install from source
+See [MCP clients](docs/mcp-clients.md) for client configuration and live credentials.
 
-Requirements: Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
-CI checks Python 3.12 through 3.15. A DataGrandLyon account is optional.
+## Build from source
+
+Install Go 1.26 or later.
+Clone the repository and build the native binary:
 
 ```bash
 git clone https://github.com/ThomasCrouzet/mcp-grand-lyon.git
 cd mcp-grand-lyon
-uv sync --locked --all-extras --dev
-uv run grand-lyon-mcp setup --yes --offline --skip-install
+go mod download
+make build
+./bin/grand-lyon-mcp setup --yes --offline
 ```
 
-Setup copies packaged configuration templates and migrates the local SQLite database.
-For interactive live setup, run `uv run grand-lyon-mcp setup`.
-Live setup stores credentials in a user configuration file with mode `0600`.
-
-Import the packaged demonstration stops and timetable:
-
-```bash
-uv run grand-lyon-mcp sync gtfs --from-file src/grand_lyon_mcp/_data/fixtures/gtfs/mini_gtfs.zip
-uv run grand-lyon-mcp doctor
-uv run grand-lyon-mcp smoke
-```
-
-The fixture dates are fixed. They are demonstration data, not current departures.
-The `smoke` command is a diagnostic; it can report unavailable tool results.
-For strict success checks, use the [verification procedure](docs/testing.md).
+`make build` sets `CGO_ENABLED=0` and writes `bin/grand-lyon-mcp`.
+No Python runtime is necessary.
 
 ## Connect an MCP client
 
-For a source checkout, generate a configuration block with absolute paths:
+Generate a client configuration with an absolute binary path:
 
 ```bash
-uv run grand-lyon-mcp client-config
+grand-lyon-mcp client-config
 ```
 
 Example:
@@ -69,76 +76,90 @@ Example:
 {
   "mcpServers": {
     "grand-lyon": {
-      "command": "/absolute/path/mcp-grand-lyon/scripts/run_mcp.sh",
-      "args": ["serve", "--transport", "stdio"]
+      "command": "/absolute/path/grand-lyon-mcp",
+      "args": ["serve", "--transport", "stdio"],
+      "env": {
+        "GRAND_LYON_MCP_CONFIG_DIR": "/absolute/config/path",
+        "GRAND_LYON_MCP_DATA_DIR": "/absolute/data/path",
+        "GRAND_LYON_MCP_DB_PATH": "/absolute/data/path/grand_lyon_mcp.db",
+        "GRAND_LYON_MCP_OFFLINE": "true"
+      }
     }
   }
 }
 ```
 
-The wrapper loads local credentials and starts the server. A stdio server waits
-for a client on stdin; it does not show an interactive prompt. See
-[MCP clients](docs/mcp-clients.md) for wheel installations and credential paths.
+Add the generated block to your MCP client.
+The server waits for JSON-RPC messages on stdin and writes protocol messages to stdout.
 
 ## Tools
 
 | Tool | Purpose |
 | --- | --- |
 | `lyon_resolve_place` | Resolve an address, stop, or personal place |
-| `lyon_next_departures` | TCL realtime departures with theoretical GTFS fallback |
-| `lyon_mobility_status` | Transit alerts, accessibility incidents, and road events |
+| `lyon_next_departures` | Get TCL realtime departures with theoretical GTFS fallback |
+| `lyon_mobility_status` | Get transit alerts, accessibility incidents, traffic, and road events |
 | `lyon_trip_options` | Compare travel modes |
-| `lyon_parking_options` | Public parking and park-and-ride options |
-| `lyon_accessibility_check` | Available accessibility evidence |
-| `lyon_nearby_facilities` | Nearby facilities |
-| `lyon_environment_brief` | Environmental indicators, where supported |
+| `lyon_parking_options` | Find public parking and park-and-ride options |
+| `lyon_accessibility_check` | Check available accessibility evidence |
+| `lyon_nearby_facilities` | Find nearby facilities |
+| `lyon_environment_brief` | Get supported environmental indicators |
 | `lyon_waste_dropoff` | Classify waste and find collection facilities |
 | `lyon_personal_briefing` | Build a briefing from a local profile |
 
 See [the tool reference](docs/tools.md) for arguments, limits, and result status.
-GTFS results are always theoretical. Parking capacity never becomes an invented
-available-space count. Missing accessibility data means `unknown`.
+GTFS results are always theoretical.
+Missing parking occupancy stays `null`.
+Missing accessibility evidence stays `unknown`.
 
 ## Configuration and data
 
-Configuration templates and fixtures are installed with the package under
-`grand_lyon_mcp/_data/`. User files use the paths from `platformdirs`.
+The binary reads user configuration from native platform directories:
 
-- Linux configuration: `~/.config/grand-lyon-mcp/`
-- macOS configuration: `~/Library/Application Support/grand-lyon-mcp/`
-- Find the current path: `grand-lyon-mcp env --config-dir`
-- Override paths with `GRAND_LYON_MCP_CONFIG_DIR`, `GRAND_LYON_MCP_DATA_DIR`, and
-  `GRAND_LYON_MCP_DB_PATH`.
-- Enable offline mode with `GRAND_LYON_MCP_OFFLINE=true`.
+| Platform | Configuration | Data |
+| --- | --- | --- |
+| Linux | `$XDG_CONFIG_HOME/grand-lyon-mcp` or `~/.config/grand-lyon-mcp` | `$XDG_DATA_HOME/grand-lyon-mcp` or `~/.local/share/grand-lyon-mcp` |
+| macOS | `~/Library/Application Support/grand-lyon-mcp` | Same as configuration |
+| Windows | `%APPDATA%\grand-lyon-mcp` | `%LOCALAPPDATA%\grand-lyon-mcp` |
 
-The CLI does not load the checkout's `.env` automatically. The wrapper and
-Makefile runtime targets do. See [Operations](docs/operations.md) for GTFS sync,
-SQLite maintenance, source discovery, cache limits, and troubleshooting.
+Use `grand-lyon-mcp env --config-dir` to print the resolved configuration directory.
+Each command reads `secrets.env` from that directory without shell evaluation.
+Nonempty process environment values take precedence.
+
+The Go release keeps the existing configuration variables, YAML files, and SQLite schema.
+See [Operations](docs/operations.md) for all supported settings and maintenance commands.
+See [Migration from Python](docs/migration-from-python.md) before replacing a prior installation.
 
 ## Development and verification
 
 ```bash
-uv sync --locked --all-extras --dev
 make quality
 ```
 
-The quality gate checks formatting, lint, strict types, and offline tests with an
-85% coverage minimum. Separate installed-wheel checks start CLI and MCP processes
-outside the checkout. They require nonempty fixture results and retain protocol transcripts.
-CI keeps quality and protocol evidence in runner temporary storage.
+The quality gate checks formatting, module state, Go diagnostics, race-enabled tests, and known vulnerabilities.
+Process-level tests start CLI and MCP child processes outside the checkout.
+They retain repeatable local evidence and protocol transcripts.
+
+```bash
+make release RELEASE_DIR=/new/external/release-directory
+```
+
+The release target builds five archives and `SHA256SUMS`.
+The output path must not exist.
 See [Testing](docs/testing.md) and [Contributing](CONTRIBUTING.md).
 
 ## Limits and privacy
 
-- MCP transport is stdio only.
-- Transitous routing is optional and disabled by default. Without a router,
-  TCL journey duration can be unavailable.
-- Live environmental indicators are not configured. They return an explicit
-  unsupported-indicator warning.
-- Fixtures and HTTP simulations verify local behavior, not upstream availability.
-- Profiles, briefings, and Vélo'v history stay in local SQLite storage. There is
-  no telemetry. Live geocoding and routing send the required places or coordinates
-  to their providers.
+- MCP transport supports stdio only.
+- Transitous routing is optional and disabled by default.
+- TCL journey duration can be unavailable without Transitous.
+- Live environmental indicators are not configured.
+- Embedded fixtures have fixed dates and do not show current conditions.
+- Offline fixture results include `OFFLINE_FIXTURE` and `degraded=true`.
+- Simulated fixture records always use `realtime=false`.
+- Profiles, briefings, and Vélo'v history stay in local SQLite storage.
+- The application has no telemetry.
+- Live geocoding and routing send required places or coordinates to their providers.
 
 ## Documentation
 
@@ -148,10 +169,11 @@ See [Testing](docs/testing.md) and [Contributing](CONTRIBUTING.md).
 - [Data sources](docs/data-sources.md)
 - [Operations](docs/operations.md)
 - [Testing](docs/testing.md)
+- [Migration from Python](docs/migration-from-python.md)
 - [Changelog](CHANGELOG.md), [Security](SECURITY.md), [Attributions](ATTRIBUTIONS.md)
 
 ## License
 
-Code: [MIT](LICENSE). Data has source-specific licenses; see
-[Attributions](ATTRIBUTIONS.md). This project is independent of Métropole de Lyon,
-SYTRAL Mobilités, Keolis-TCL, and JCDecaux. Their names and marks identify services.
+Code uses the [MIT license](LICENSE).
+Data has source-specific licenses; see [Attributions](ATTRIBUTIONS.md).
+This project is independent of Métropole de Lyon, SYTRAL Mobilités, Keolis-TCL, and JCDecaux.
