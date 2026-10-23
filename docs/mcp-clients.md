@@ -1,73 +1,87 @@
 # MCP clients
 
-The server uses MCP over **stdio**. The client starts the server as a child process
-and exchanges JSON-RPC messages on stdin and stdout. Logs go to stderr.
+The server uses MCP over stdio.
+The client starts the binary as a child process.
+JSON-RPC messages use stdin and stdout.
+Errors and diagnostics use stderr.
 
-## Source checkout
+## Generate configuration
 
-Generate a configuration block with absolute paths:
+Run setup once:
 
 ```bash
-uv run grand-lyon-mcp client-config
+grand-lyon-mcp setup --yes --offline
 ```
 
-Example for clients with an `mcpServers` configuration, such as Claude Desktop or
-Cursor:
+Print a configuration block with absolute paths:
+
+```bash
+grand-lyon-mcp client-config
+```
+
+`--bin` and `--wrapper` are compatibility options.
+Both options select the current Go executable.
+
+Example:
 
 ```json
 {
   "mcpServers": {
     "grand-lyon": {
-      "command": "/absolute/path/mcp-grand-lyon/scripts/run_mcp.sh",
-      "args": ["serve", "--transport", "stdio"]
-    }
-  }
-}
-```
-
-The wrapper uses the checkout's `.venv/bin/grand-lyon-mcp`. Run
-`uv sync --locked --all-extras --dev` before you use it.
-
-## Installed wheel
-
-Set `command` to the absolute installed `grand-lyon-mcp` executable. The path
-generator is for source checkouts; it does not locate a wheel environment.
-
-```json
-{
-  "mcpServers": {
-    "grand-lyon": {
-      "command": "/absolute/path/venv/bin/grand-lyon-mcp",
+      "command": "/absolute/path/grand-lyon-mcp",
       "args": ["serve", "--transport", "stdio"],
-      "env": {"GRAND_LYON_MCP_OFFLINE": "true"}
+      "env": {
+        "GRAND_LYON_MCP_CONFIG_DIR": "/absolute/config/path",
+        "GRAND_LYON_MCP_DATA_DIR": "/absolute/data/path",
+        "GRAND_LYON_MCP_DB_PATH": "/absolute/data/path/grand_lyon_mcp.db",
+        "GRAND_LYON_MCP_OFFLINE": "true"
+      }
     }
   }
 }
 ```
 
-Configuration templates, SQL migrations, and demonstration fixtures are included
-in the wheel. A source checkout is not required at runtime.
+Setup writes the same block to `mcp-client.snippet.json`.
+The file is in the resolved configuration directory.
+Add the block to your MCP client.
 
-## Credentials
+## Live credentials
 
-Keep credentials out of client configuration files. For live use, the server can
-inherit `DATAGRANDLYON_USERNAME` and `DATAGRANDLYON_PASSWORD` from its parent.
-The source-checkout wrapper can also load `secrets.env` from the user configuration
-directory. It checks the Linux path and then the macOS path. Set
-`GRAND_LYON_MCP_SECRETS_FILE` to select a different credential file.
+Keep credentials out of MCP configuration files.
+Set the credentials in the process environment before live setup:
 
-The wrapper then loads the checkout's `.env`, if present. Without credentials,
-it enables fixture mode unless offline mode was explicitly set. Use
-`GRAND_LYON_MCP_OFFLINE=true` to block network access during demonstration use.
+POSIX shell:
+
+```bash
+export DATAGRANDLYON_USERNAME='account-name'
+export DATAGRANDLYON_PASSWORD='account-password'
+grand-lyon-mcp setup --yes --live
+```
+
+PowerShell:
+
+```powershell
+$env:DATAGRANDLYON_USERNAME = 'account-name'
+$env:DATAGRANDLYON_PASSWORD = 'account-password'
+.\grand-lyon-mcp.exe setup --yes --live
+```
+
+Setup stores supported values in the user `secrets.env` file.
+On Unix systems, setup writes that file with mode `0600`.
+The CLI parses the file without shell evaluation.
+Nonempty process environment values take precedence.
+
+The generated MCP block contains only paths and the offline setting.
+It never contains DataGrandLyon credentials.
 
 ## Verify the connection
 
-1. Reload the client's MCP configuration.
-2. List tools. The server must expose exactly the ten tools in the
-   [tool reference](tools.md).
-3. Call `lyon_resolve_place` with `{"query": "Part-Dieu"}`.
-4. Inspect stderr if startup or initialization fails.
+1. Reload the MCP client configuration.
+2. List the available tools.
+3. Confirm that the client shows exactly ten tools.
+4. Call `lyon_resolve_place` with `{"query":"Part-Dieu"}`.
+5. Inspect stderr after a startup or initialization failure.
 
-Running `serve` in a terminal produces no interactive prompt. The `smoke` command
-can diagnose handler results without an MCP client. The
-[installed-wheel checks](testing.md) verify the real protocol and save a transcript.
+Running `serve` in a terminal does not show an interactive prompt.
+Use `grand-lyon-mcp smoke` for a local diagnostic.
+Use the [process checks](testing.md) for strict result assertions.

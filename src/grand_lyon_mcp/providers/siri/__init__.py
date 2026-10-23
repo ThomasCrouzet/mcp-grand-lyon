@@ -1,1 +1,0 @@
-"""SIRI Lite provider."""

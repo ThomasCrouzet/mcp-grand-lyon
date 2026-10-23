@@ -2,58 +2,92 @@
 
 ## Development setup
 
+Install Go 1.26 or later.
+Download the locked module dependencies:
+
 ```bash
-uv sync --locked --all-extras --dev
+go mod download
 ```
 
-Tests use temporary SQLite databases and packaged fixtures. A live account and
-user-level setup are not required. Keep verification paths separate from personal
-configuration and data.
+Tests use temporary SQLite databases and embedded fixtures.
+A live account and user setup are not necessary.
+Keep verification paths separate from personal configuration and data.
 
 ## Quality gate
 
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy src
-GRAND_LYON_MCP_OFFLINE=true uv run --offline --no-sync pytest -m "not live" --cov
+make quality
 ```
 
-`make quality` combines these checks. [Testing](docs/testing.md) gives commands
-that retain quality reports and installed-wheel MCP transcripts. CI must pass
-for Python 3.12 and 3.13. Keep the 85% coverage minimum.
+The target checks formatting, module state, Go diagnostics, race-enabled tests, and known vulnerabilities.
+The vulnerability check uses `govulncheck` version `v1.9.0`.
+The test target enforces at least 85% application coverage.
+The gate keeps documented legacy-equivalent boundary exclusions.
+The report also shows unfiltered internal-package coverage.
 
-Keep generated reports in local storage. Do not upload reports to GitHub.
+Use these targets for focused checks:
+
+```bash
+make format-check
+make vet
+make test
+make vulnerability
+```
+
+Keep generated reports in local storage.
+Do not upload reports to GitHub.
 
 ## Change rules
 
-- Follow the testing policy in `AGENTS.md`. Write necessary isolated tests before
-  implementation, after recording the failure modes. Prefer observable E2E results.
-- Keep the ten read-only tools and [layer boundaries](docs/architecture.md).
-- Mark theoretical or incomplete data accurately. Do not invent missing values.
+- Follow the testing policy in `AGENTS.md`.
+- Write necessary isolated tests before implementation.
+- Record failure modes before isolated testing.
+- Prefer observable E2E results.
+- Keep the ten read-only tools and the documented layer boundaries.
+- Mark theoretical or incomplete data accurately.
+- Do not invent missing values.
 - Keep credentials and personal data out of commits, logs, and fixtures.
-- Update maintained procedures when behavior changes. Record a design decision
-  in `docs/adr/` when the rationale needs a separate durable record.
+- Update maintained procedures when behavior changes.
+- Add a design decision when the rationale needs a durable record.
 - Use English documentation and short, direct instructions.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `cmd/grand-lyon-mcp/` | Native command entry point |
+| `internal/adapter/` | MCP registration and stdio transport |
+| `internal/cli/` | Administrative commands and setup |
+| `internal/model/` | Domain models and provider contracts |
+| `internal/service/` | Tool behavior and result envelopes |
+| `internal/providers/` | Fixture and live provider implementations |
+| `internal/httpclient/` | Bounded outbound HTTP |
+| `internal/storage/` | SQLite storage and GTFS import |
+| `internal/config/` | Configuration loading and validation |
+| `internal/assets/` | Embedded fixtures, templates, schemas, and migrations |
+| `tests/e2e/` | Installed-binary CLI and MCP process checks |
 
 ## Fixtures
 
-Packaged fixtures live in `src/grand_lyon_mcp/_data/fixtures/`. Use dated inputs
-and exact expected results for time-sensitive behavior.
+Canonical fixtures live in `internal/assets/fixtures/`.
+Use dated inputs and exact expected results for time-sensitive behavior.
+Review each capture before adding it to embedded assets.
+Remove credentials, personal data, and unstable fields.
 
-`scripts/record_fixture.py` can capture an explicitly selected provider response:
+## Release checks
+
+Create release files in a new external directory:
 
 ```bash
-uv run python scripts/record_fixture.py --url "https://data.grandlyon.com/SELECTED_PATH" --out sample.json --confirm
+make release RELEASE_DIR=/new/external/release-directory
 ```
 
-The capture goes to the ignored `tests/fixtures/recorded/` directory. The script
-redacts selected response headers; it does not guarantee removal of secrets from
-the URL or body. Inspect and sanitize the complete capture before you add it to
-the packaged fixtures.
+The release script builds Linux, macOS, and Windows archives.
+It also writes `SHA256SUMS`.
+See [Testing](docs/testing.md) for installed-binary verification.
 
 ## Pull requests
 
-Explain the problem, behavior change, and validation evidence. Keep changes
-focused and use a descriptive commit message. Contributions use the
-[MIT license](LICENSE) and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Explain the problem, behavior change, and validation evidence.
+Keep changes focused and use a descriptive commit message.
+Contributions use the [MIT license](LICENSE) and follow the [Code of Conduct](CODE_OF_CONDUCT.md).

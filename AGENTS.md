@@ -2,26 +2,30 @@
 
 ## Scope
 
-This Python package exposes read-only Lyon mobility tools through MCP and a Typer CLI.
-Keep MCP integration in `adapters/mcp/`. Keep provider access separate from domain models and services.
-Packaged fixtures reside in `src/grand_lyon_mcp/_data/fixtures/`.
-Offline integration tests use temporary SQLite databases and copied configuration fixtures.
+This Go module exposes read-only Lyon mobility tools through MCP and a native CLI.
+Keep MCP integration in `internal/adapter/`.
+Keep provider access separate from models and services.
+Embedded fixtures reside in `internal/assets/fixtures/`.
+Offline process tests use temporary SQLite databases and copied fixtures.
 
 ## Commands
 
 ```bash
-uv sync --locked --all-extras --dev
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src
-GRAND_LYON_MCP_OFFLINE=true uv run --offline --no-sync pytest -m "not live" --cov
+go mod download
+make lint
+make test
+make vulnerability
 ```
 
-`make quality` combines lint, types, and offline tests. Keep the existing coverage gate.
+`make quality` combines lint, race-enabled tests, and the pinned vulnerability check.
 Use temporary configuration, data, and database paths for CLI checks.
-The Makefile runtime targets can load local credentials. Use the fixture tests for offline validation.
+Use embedded fixtures for offline validation.
 
 ## Testing policy
+
+This policy applies to every existing and future project, including projects outside this directory.
+Keep these requirements when creating, importing, or revising project instructions.
+Use local instructions for commands, fixtures, retained failure modes, and artifact paths.
 
 - Never write unit tests after you write code.
 - Highly prefer E2E tests as the sole testing mechanism.
@@ -29,19 +33,36 @@ The Makefile runtime targets can load local credentials. Use the fixture tests f
 - At the end of each E2E run, produce a verifiable and repeatable artifact.
 - Record the command, source revision, environment, fixtures, and results with the artifact.
 - Include the working diff identity when the source has uncommitted changes.
-- If isolation is necessary, first document all identified failure modes. Then write the tests and implementation.
-- Keep an isolated test only for a concrete failure that E2E tests cannot detect.
-- Review assertions, fixtures, mocks, and skips before removing a test.
-- Do not treat disabled E2E tests or simulated boundaries as equivalent coverage.
+- Before isolated testing, first write down all identified ways the system could fail.
+- Then write the necessary tests before the implementation.
+- Keep an isolated test only for a concrete failure that the E2E suite does not detect.
+- Examine actual assertions, fixtures, mocks, and skips before removing a test.
+- Do not treat disabled E2E tests or simulated boundaries as proof of equivalent coverage.
 - Do not add tests for coverage percentages, type contracts, dependency behavior, or mocked call sequences alone.
 
-`uv run pytest tests/contract tests/integration -m "not live"` exercises dispatch, FastMCP registration, CLI callbacks, storage, and HTTP fixtures.
-These tests run in process. They do not test stdio framing or process startup.
-`scripts/verify_wheel.py --artifact-dir "$ARTIFACT_DIR"` installs a wheel and starts CLI and MCP stdio processes outside the checkout. It requires nonempty place, departure, and parking results and verifies dated fallback, parking, startup-failure, and EOF scenarios.
-Keep isolated checks for source parsing, strict transit filters, fallback accuracy, missing availability, accessibility, redaction, and bounded transfers.
-Also keep storage, retry, concurrency, taxonomy, scoring, setup, and custom validation checks absent from the permissive dispatch assertions.
-Add `--junitxml="$ARTIFACT_DIR/results.xml"` to retain pytest results in a dedicated external directory.
-`scripts/verify_quality.py --artifact-dir "$ARTIFACT_DIR"` runs the quality gate sequentially and retains source identity, fixture hashes, JUnit, coverage, and logs. Use a new external artifact directory for each runner invocation.
-CI runs these checks without uploading reports. Keep generated reports and installed-wheel protocol transcripts in local storage. Coverage measures execution, not complete user behavior. Offline process tests use fixture providers; retain HTTP-fixture checks for live mapping and isolated resource-state and storage-retention checks.
-`scripts/live_smoke.py` writes `$LIVE_OUT/live_report.json`, with `/tmp/grand-lyon-live-tests` as its default directory.
-That live diagnostic accepts all tool status values, including errors. It does not prove successful service results.
+Browser, CLI, API, and protocol E2E tests can verify observable behavior.
+A report, trace, exported file, or captured protocol result can provide an artifact.
+The artifact must include results and enough information to repeat the check.
+Passing isolated tests does not establish E2E success.
+
+Keep reports and repeatable evidence in local storage.
+Never upload or archive reports on GitHub.
+This rule includes Actions report artifacts, SARIF uploads, and Docker build records.
+Keep release deliverables separate from reports.
+
+### Project checks
+
+`make test` runs all Go tests with the race detector.
+It gives the E2E runner a new external evidence directory.
+Set `GLMCP_ARTIFACT_DIR` to select a new external base path.
+It instruments the application binary and enforces the 85% coverage gate.
+`GLMCP_COVERAGE_DIR` selects the external raw counter directory.
+The gate keeps the legacy-equivalent adapter, CLI, and live-provider exclusions.
+The report also shows unfiltered internal-package coverage.
+`tests/e2e/` builds the binary once and starts CLI and MCP processes outside the checkout.
+The suite verifies all ten tools, exact fixture results, startup failures, GTFS rollback, and EOF shutdown.
+Set `GLMCP_BINARY` to test an absolute release binary without a source build.
+The E2E report retains source identity, fixture hashes, commands, results, and protocol transcripts.
+CI keeps reports in runner temporary storage and does not upload them.
+Keep isolated tests only for failures that process results cannot show.
+These failures include parser edges, transaction state, resource closure, retention, concurrency, and bounded transfers.

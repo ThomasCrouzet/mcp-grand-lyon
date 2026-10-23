@@ -1,63 +1,82 @@
 # Architecture
 
 ```text
-MCP adapter → application services → domain protocols → providers → HTTP / SQLite
+MCP adapter -> services -> provider contracts -> providers -> HTTP or SQLite
 ```
 
 ## Boundaries
 
-| Layer | Responsibility |
+| Package | Responsibility |
 | --- | --- |
-| `adapters/mcp/` | FastMCP registration, input validation, serialization, stdio |
-| `services/` | Application behavior and response envelopes |
-| `domain/` | Models, provider protocols, matching rules, and domain errors |
-| `providers/` | DataGrandLyon, Photon, SIRI, GTFS, Transitous, and fixture access |
-| `storage/` | SQLite repositories and explicit SQL migrations |
-| `infrastructure/` | Bounded HTTP, retry, concurrency, redaction, time, and geometry |
+| `cmd/grand-lyon-mcp/` | Native executable entry point and signal handling |
+| `internal/adapter/` | MCP tool registration and stdio transport |
+| `internal/cli/` | Setup, maintenance, diagnostics, and server commands |
+| `internal/model/` | Domain models, provider contracts, and shared rules |
+| `internal/service/` | Tool behavior, validation, scoring, and result envelopes |
+| `internal/providers/` | DataGrandLyon, Photon, SIRI, Transitous, and fixture access |
+| `internal/httpclient/` | Bounded HTTPS, redirects, retries, timeouts, and concurrency |
+| `internal/storage/` | SQLite repositories, GTFS import, and retention |
+| `internal/config/` | Platform paths, YAML, secrets, environment precedence, and validation |
+| `internal/assets/` | Embedded configuration, fixtures, schemas, and migrations |
 
-Keep MCP SDK imports in the adapter. Domain code does not import `httpx` or
-`aiosqlite`. Services use provider protocols so transport changes do not require
-business-logic changes. Modules do not perform network I/O at import time.
+Keep MCP SDK use in `internal/adapter/`.
+Services depend on provider contracts from `internal/model/`.
+Providers map external data into domain models.
+No package performs network access during initialization.
 
-The public surface has exactly ten read-only tools. Administrative commands stay
-in the CLI. Tool arguments do not accept arbitrary SQL, CQL, tables, or URLs.
+The public surface has exactly ten read-only tools.
+Administrative operations stay in the CLI.
+Tool arguments do not accept arbitrary URLs, SQL, CQL, or tables.
+
+## Binary and assets
+
+Go embeds configuration templates, tool schemas, fixtures, and SQLite migrations in the executable.
+An installed release does not need repository files.
+Offline mode reads embedded fixtures unless `GRAND_LYON_MCP_FIXTURES_DIR` selects an override.
+
+The release build sets `CGO_ENABLED=0`.
+The pure-Go SQLite driver keeps Linux, macOS, and Windows archives self-contained.
 
 ## Lifecycle
 
-`build_app()` acquires SQLite and HTTP resources through an async exit stack.
-It transfers ownership to the application container only after all configuration
-and services are ready. Errors and cancellation close acquired resources.
-The container closes SQLite even when HTTP shutdown raises an error.
+The CLI loads and validates configuration before it creates the application.
+The application opens SQLite, applies embedded migrations, and cleans legacy retention tables.
+It then selects embedded fixtures or live providers.
 
-Connection initialization and migrations close the connection on failure. Each
-migration and its version record share a transaction. The MCP entry point closes
-the container after server registration failure, transport failure, or EOF.
+Startup closes SQLite and HTTP resources after any initialization failure.
+Normal shutdown closes both resources after the MCP stdio loop ends.
+User `SIGINT` and `SIGTERM` signals request a clean exit.
+Each migration and its version record share one transaction.
+GTFS replacement and stop-entity indexing use one transaction.
 
-## Storage decisions
+## Storage
 
 SQLite keeps the server local and avoids a separate database service.
-`aiosqlite` supplies async access. Explicit SQL migrations preserve direct control
-of FTS5 text search and RTree spatial indexes. `schema_migrations` records versions.
+Embedded SQL migrations preserve the existing schema and migration identifiers.
+The Go release opens databases created by the earlier Python release.
 
-HTTP cache storage has count and payload-byte limits. Source-health storage has
-count and age limits. Startup and store writes apply retention. See
-[Operations](operations.md) for exact limits and disk maintenance.
+Storage supports FTS5 search and RTree spatial indexes.
+The live providers do not use a persistent HTTP cache or persistent source-health records.
+Legacy cache and source-health tables remain for database compatibility.
+Startup prunes these legacy tables before serving requests.
 
 ## Time and data quality
 
-The business timezone is `Europe/Paris`. Stored instants include a timezone.
-GTFS uses service calendars, date exceptions, and elapsed time from local noon
-minus twelve hours. UTC comparisons preserve order during repeated DST hours.
-The fallback searches the next 24 elapsed hours and marks all results theoretical.
+The business timezone is `Europe/Paris`.
+Stored instants include a UTC offset.
+GTFS applies service calendars, date exceptions, and times above 24 hours.
+UTC comparisons preserve order during repeated DST hours.
+The fallback searches the next 24 elapsed hours and marks results theoretical.
 
-Services retain explicit warnings when data is incomplete. A missing parking
-occupancy value is separate from total capacity. Unknown accessibility stays unknown.
+Services retain warnings when data is incomplete.
+Missing parking occupancy differs from total capacity.
+Unknown accessibility stays unknown.
 
 ## Dependencies and evidence
 
-`pyproject.toml` defines the supported MCP SDK range. `uv.lock` selects the tested
-version. Use locked installs; do not copy a version range from an old design note.
+`go.mod` defines the Go version and module dependencies.
+`go.sum` records dependency checksums.
+The MCP adapter uses the official Go SDK.
 
-[Testing](testing.md) describes installed-wheel protocol evidence and the retained
-isolated checks. [Bounded HTTP transfers](adr/0005-bounded-http-transfers.md)
-records the network transfer decision and its limits.
+[Testing](testing.md) describes process-level evidence and retained isolated checks.
+[Bounded HTTP transfers](adr/0005-bounded-http-transfers.md) records the network transfer decision.

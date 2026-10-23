@@ -1,1 +1,0 @@
-"""DataGrandLyon provider adapters."""

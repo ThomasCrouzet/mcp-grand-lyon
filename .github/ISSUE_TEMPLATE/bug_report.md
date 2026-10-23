@@ -18,7 +18,8 @@ Include the MCP request or CLI command, arguments, and fixture data if applicabl
 ## Environment
 
 - OS:
-- Python: `python --version`
+- Architecture: `uname -m` on Unix systems
+- Go version, if built from source: `go version`
 - Version: `grand-lyon-mcp version`
 - Mode: offline or live
 

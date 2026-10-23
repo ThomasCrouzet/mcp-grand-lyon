@@ -15,69 +15,72 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        go-version: ["1.26.x", "1.27.x"]
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
         with:
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
-      - name: Sync (locked)
-        run: uv sync --locked --all-extras --dev
-      - name: Cache mypy analysis
-        uses: actions/cache@v6
-        with:
-          path: .mypy_cache
-          key: mypy-ubuntu24.04-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-${{ hashFiles('src/**/*.py') }}
-          restore-keys: |
-            mypy-ubuntu24.04-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-
-      - name: Offline quality gate with evidence
-        run: uv run --no-sync python scripts/verify_quality.py --artifact-dir "$RUNNER_TEMP/quality-evidence"
+          go-version: ${{ matrix.go-version }}
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Verify modules
+        run: |
+          go mod verify
+          go mod tidy -diff
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf 'Files require gofmt:\n%s\n' "$files" >&2
+            exit 1
+          fi
+      - name: Run vet
+        run: go vet ./...
+      - name: Run race-enabled tests
+        env:
+          GLMCP_ARTIFACT_DIR: ${{ runner.temp }}/quality-${{ matrix.go-version }}
+          GLMCP_COVERAGE_DIR: ${{ runner.temp }}/coverage-${{ matrix.go-version }}
+        run: make test
+      - name: Check known vulnerabilities
+        if: matrix.go-version == '1.27.x'
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       # Keep generated reports in runner temporary storage. Do not upload them.
 
   build:
+    needs: quality
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
         with:
-          python-version: "3.12"
-          # Prebuilt wheel downloads are faster than a separate cache transfer.
-          enable-cache: false
-      - name: Build wheel + sdist
-        run: uv build
-      - name: Verify installed wheel through MCP stdio and CLI
+          go-version: "1.27.x"
+          cache: true
+      - name: Build host binary
         run: |
-          set -euo pipefail
-          wheels=(dist/*.whl)
-          test "${#wheels[@]}" -eq 1
-          uv run --no-project --python 3.12 python scripts/verify_wheel.py \
-            --wheel "${wheels[0]}" --artifact-dir "$RUNNER_TEMP/wheel-evidence"
+          mkdir -p "$RUNNER_TEMP/bin"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/bin/grand-lyon-mcp" ./cmd/grand-lyon-mcp
+      - name: Verify host binary through MCP stdio and CLI
         env:
-          UV_CONCURRENT_BUILDS: "1"
-          UV_CONCURRENT_DOWNLOADS: "2"
-          UV_CONCURRENT_INSTALLS: "2"
-      - name: Upload distributions
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/*
-          retention-days: 3
+          GLMCP_ARTIFACT_DIR: ${{ runner.temp }}/installed-binary-evidence
+          GLMCP_BINARY: ${{ runner.temp }}/bin/grand-lyon-mcp
+        run: go test -count=1 ./tests/e2e
 
   gitleaks:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # CLI en conteneur : aucun token GitHub ni licence requis (robuste aussi sur
-      # les PR Dependabot dont le GITHUB_TOKEN est en lecture seule).
-      - name: Gitleaks secret scan
+      - name: Scan committed content for secrets
         run: |
           docker run --rm -v "${{ github.workspace }}:/repo" \
-            zricethezav/gitleaks:latest detect --source=/repo --redact --verbose
+            zricethezav/gitleaks:v8.30.1 detect --source=/repo --redact --verbose

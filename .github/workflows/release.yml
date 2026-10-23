@@ -1,59 +1,230 @@
-# Publication sur PyPI via Trusted Publishing (OIDC, sans token) + GitHub Release.
-# Pré-requis côté PyPI : créer le projet et enregistrer ce dépôt comme "trusted publisher"
-# (workflow: release.yml, environment: pypi). Déclenché en poussant un tag `vX.Y.Z`.
+# Build verified binaries, then publish immutable GitHub release assets.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing vX.Y.Z tag to release or resume"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.12"
-      - name: Build
-        run: uv build
-      - uses: actions/upload-artifact@v7
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Verify tag and source version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tag must use the stable vX.Y.Z format." >&2
+            exit 1
+          fi
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
+          version="$(sed -nE 's/^[[:space:]]*const Version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' internal/version/version.go)"
+          test -n "$version"
+          test "$(printf '%s\n' "$version" | wc -l)" -eq 1
+          test "$RELEASE_TAG" = "v$version"
+          grep -Fq "## $version:" CHANGELOG.md
+          echo "tag=$RELEASE_TAG" >>"$GITHUB_OUTPUT"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+  quality:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.26.x", "1.27.x"]
+    steps:
+      - uses: actions/checkout@v7
         with:
-          name: dist
-          path: dist/*
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Verify modules
+        run: |
+          go mod verify
+          go mod tidy -diff
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf 'Files require gofmt:\n%s\n' "$files" >&2
+            exit 1
+          fi
+      - name: Run vet
+        run: go vet ./...
+      - name: Run race-enabled tests
+        env:
+          GLMCP_ARTIFACT_DIR: ${{ runner.temp }}/quality-${{ matrix.go-version }}
+          GLMCP_COVERAGE_DIR: ${{ runner.temp }}/coverage-${{ matrix.go-version }}
+        run: make test
+      - name: Check known vulnerabilities
+        if: matrix.go-version == '1.27.x'
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  build:
+    needs: [prepare, quality]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: Build release archives
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: scripts/build-release.sh "$VERSION" "$RUNNER_TEMP/dist"
+      - name: Verify installed Linux binary
+        env:
+          GLMCP_ARTIFACT_DIR: ${{ runner.temp }}/installed-binary-evidence
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/installed"
+          tar -xzf "$RUNNER_TEMP/dist/grand-lyon-mcp_${VERSION}_linux_amd64.tar.gz" \
+            -C "$RUNNER_TEMP/installed"
+          binary="$RUNNER_TEMP/installed/grand-lyon-mcp_${VERSION}_linux_amd64/grand-lyon-mcp"
+          test "$("$binary" version)" = "$VERSION"
+          GLMCP_BINARY="$binary" go test -count=1 ./tests/e2e
+      - name: Store release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/dist/*
           retention-days: 3
 
-  publish-pypi:
-    needs: build
-    runs-on: ubuntu-24.04
-    environment: pypi
-    permissions:
-      id-token: write # OIDC pour Trusted Publishing
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist
-          path: dist
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-
   github-release:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: actions/download-artifact@v8
         with:
-          name: dist
+          name: release-assets
           path: dist
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: dist/*
-          generate_release_notes: true
+      - name: Verify asset checksums
+        run: cd dist && sha256sum --check SHA256SUMS
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="## $VERSION:"
+          matches="$(awk -v prefix="$prefix" 'index($0, prefix) == 1 {count++} END {print count + 0}' CHANGELOG.md)"
+          test "$matches" -eq 1
+          raw_notes="$RUNNER_TEMP/release-notes.raw.md"
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          awk -v prefix="$prefix" '
+            index($0, prefix) == 1 {found = 1; next}
+            found && /^## / {exit}
+            found {print}
+          ' CHANGELOG.md >"$raw_notes"
+          awk '
+            {lines[NR] = $0; if ($0 !~ /^[[:space:]]*$/) {if (!first) first = NR; last = NR}}
+            END {for (line = first; line <= last; line++) print lines[line]}
+          ' "$raw_notes" >"$notes_file"
+          grep -q '[^[:space:]]' "$notes_file"
+      - name: Create or resume GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_file="$RUNNER_TEMP/release-notes.md"
+          mapfile -t local_assets < <(find dist -maxdepth 1 -type f -print | sort)
+          test "${#local_assets[@]}" -gt 0
+
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" "${local_assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --notes-file "$notes_file" \
+              --title "grand-lyon-mcp $RELEASE_TAG"
+            exit 0
+          fi
+
+          existing_dir="$(mktemp -d "$RUNNER_TEMP/existing-release.XXXXXX")"
+          trap 'find "$existing_dir" -depth -delete' EXIT
+          remote_notes="$RUNNER_TEMP/remote-release-notes.md"
+          normalized_remote_notes="$RUNNER_TEMP/normalized-remote-release-notes.md"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json body --jq '.body // ""' >"$remote_notes"
+          awk '
+            {lines[NR] = $0; if ($0 !~ /^[[:space:]]*$/) {if (!first) first = NR; last = NR}}
+            END {for (line = first; line <= last; line++) print lines[line]}
+          ' "$remote_notes" >"$normalized_remote_notes"
+          if ! cmp -s "$notes_file" "$normalized_remote_notes"; then
+            echo "Existing release notes differ from CHANGELOG.md." >&2
+            exit 1
+          fi
+          remote_names="$RUNNER_TEMP/remote-assets.txt"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' >"$remote_names"
+
+          while IFS= read -r remote_name; do
+            test -z "$remote_name" && continue
+            test "$(basename "$remote_name")" = "$remote_name"
+            if [ ! -f "dist/$remote_name" ]; then
+              echo "Existing release has unexpected asset: $remote_name" >&2
+              exit 1
+            fi
+          done <"$remote_names"
+
+          if [ -s "$remote_names" ]; then
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --dir "$existing_dir"
+          fi
+          for local_asset in "${local_assets[@]}"; do
+            name="$(basename "$local_asset")"
+            if [ -f "$existing_dir/$name" ] && ! cmp -s "$local_asset" "$existing_dir/$name"; then
+              echo "Refusing to replace different release asset: $name" >&2
+              exit 1
+            fi
+          done
+          for local_asset in "${local_assets[@]}"; do
+            name="$(basename "$local_asset")"
+            if [ ! -f "$existing_dir/$name" ]; then
+              gh release upload "$RELEASE_TAG" "$local_asset" --repo "$GITHUB_REPOSITORY"
+            fi
+          done
