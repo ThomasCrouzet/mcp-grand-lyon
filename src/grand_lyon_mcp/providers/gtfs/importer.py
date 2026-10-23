@@ -50,6 +50,21 @@ def _read_csv_from_zip(zf: zipfile.ZipFile, name: str) -> list[dict[str, str]]:
 
 
 async def import_gtfs_zip(conn: aiosqlite.Connection, zip_path: Path) -> dict[str, int]:
+    """Replace the installed feed atomically."""
+    await conn.execute("SAVEPOINT gtfs_import")
+    try:
+        counts = await _import_gtfs_zip_uncommitted(conn, zip_path)
+    except BaseException:
+        await conn.execute("ROLLBACK TO SAVEPOINT gtfs_import")
+        await conn.execute("RELEASE SAVEPOINT gtfs_import")
+        raise
+    await conn.execute("RELEASE SAVEPOINT gtfs_import")
+    return counts
+
+
+async def _import_gtfs_zip_uncommitted(
+    conn: aiosqlite.Connection, zip_path: Path
+) -> dict[str, int]:
     size = zip_path.stat().st_size
     if size > MAX_ZIP_BYTES:
         raise ValueError(f"Archive GTFS trop volumineuse ({size} octets compressés)")
@@ -225,5 +240,4 @@ async def import_gtfs_zip(conn: aiosqlite.Connection, zip_path: Path) -> dict[st
         """,
         (str(zip_path), now_utc().isoformat(), file_hash, "ok"),
     )
-    await conn.commit()
     return counts

@@ -1,38 +1,154 @@
-# Publication sur PyPI via Trusted Publishing (OIDC, sans token) + GitHub Release.
-# Pré-requis côté PyPI : créer le projet et enregistrer ce dépôt comme "trusted publisher"
-# (workflow: release.yml, environment: pypi). Déclenché en poussant un tag `vX.Y.Z`.
+# Publish to PyPI with Trusted Publishing, then create the GitHub release.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing vX.Y.Z tag to release"
+        required: true
+        type: string
+      resume_github_release:
+        description: "Skip PyPI because this version is already published"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Verify tag and package version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Release tag must use the stable vX.Y.Z format." >&2
+            exit 1
+          fi
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          version="$(python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          tree = ast.parse(Path("src/grand_lyon_mcp/version.py").read_text(encoding="utf-8"))
+          versions = [
+              node.value.value
+              for node in tree.body
+              if isinstance(node, ast.Assign)
+              and any(isinstance(target, ast.Name) and target.id == "__version__" for target in node.targets)
+              and isinstance(node.value, ast.Constant)
+              and isinstance(node.value.value, str)
+          ]
+          if len(versions) != 1:
+              raise SystemExit("version.py must assign one string to __version__")
+          print(versions[0])
+          PY
+          )"
+          test "$RELEASE_TAG" = "v$version"
+          grep -Fq "## $version:" CHANGELOG.md
+          echo "tag=$RELEASE_TAG" >>"$GITHUB_OUTPUT"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+  quality:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Sync locked environment
+        run: uv sync --locked --all-extras --dev
+      - name: Run offline quality gate
+        run: uv run --no-sync python scripts/verify_quality.py --artifact-dir "$RUNNER_TEMP/quality-evidence"
+
   build:
+    needs: [prepare, quality]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - name: Build
+          enable-cache: false
+      - name: Build wheel and source distribution
         run: uv build
-      - uses: actions/upload-artifact@v7
+      - name: Verify installed wheel through MCP stdio and CLI
+        run: |
+          set -euo pipefail
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --no-project --python 3.12 python scripts/verify_wheel.py \
+            --wheel "${wheels[0]}" --artifact-dir "$RUNNER_TEMP/wheel-evidence"
+        env:
+          UV_CONCURRENT_BUILDS: "1"
+          UV_CONCURRENT_DOWNLOADS: "2"
+          UV_CONCURRENT_INSTALLS: "2"
+      - name: Verify installed wheel setup
+        run: |
+          set -euo pipefail
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --no-project --python 3.12 python scripts/verify_setup.py \
+            --wheel "${wheels[0]}" --artifact-dir "$RUNNER_TEMP/setup-evidence"
+        env:
+          UV_CONCURRENT_BUILDS: "1"
+          UV_CONCURRENT_DOWNLOADS: "2"
+          UV_CONCURRENT_INSTALLS: "2"
+      - name: Verify distribution names
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -f "dist/grand_lyon_mcp-${VERSION}-py3-none-any.whl"
+          test -f "dist/grand_lyon_mcp-${VERSION}.tar.gz"
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 2
+      - name: Store release distributions
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
           retention-days: 3
 
   publish-pypi:
-    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.resume_github_release != true }}
+    needs: [prepare, build]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
-      id-token: write # OIDC pour Trusted Publishing
+      id-token: write
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -42,18 +158,62 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   github-release:
-    needs: build
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.build.result == 'success' &&
+      (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
+    needs: [prepare, build, publish-pypi]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
+      - name: Verify published distributions
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          url = f"https://pypi.org/pypi/grand-lyon-mcp/{version}/json"
+          for attempt in range(6):
+              try:
+                  with urllib.request.urlopen(url, timeout=15) as response:
+                      published = json.load(response)
+                  break
+              except urllib.error.HTTPError as error:
+                  if error.code != 404 or attempt == 5:
+                      raise
+                  time.sleep(5)
+          remote = {
+              file["filename"]: file["digests"]["sha256"]
+              for file in published["urls"]
+          }
+          local = {
+              path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in Path("dist").iterdir()
+              if path.is_file()
+          }
+          if local != {name: remote.get(name) for name in local}:
+              raise SystemExit("PyPI distributions do not match this release build")
+          PY
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
+          tag_name: ${{ needs.prepare.outputs.tag }}

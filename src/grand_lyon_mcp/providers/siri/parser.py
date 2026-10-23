@@ -106,18 +106,17 @@ def parse_situation_exchange(payload: dict[str, Any]) -> list[TransitAlert]:
         severity = {
             "normal": Severity.INFO,
             "slight": Severity.MINOR,
-            "verySlight": Severity.MINOR,
+            "veryslight": Severity.MINOR,
             "severe": Severity.MAJOR,
-            "verySevere": Severity.CRITICAL,
-            "noImpact": Severity.INFO,
+            "verysevere": Severity.CRITICAL,
+            "noimpact": Severity.INFO,
         }.get(sev_raw, Severity.UNKNOWN)
         lines: list[str] = []
         affects = sit.get("Affects") or sit.get("affects") or {}
-        for lr in _walk_key(affects, "LineRef"):
-            if isinstance(lr, str):
-                lines.append(lr)
-            elif isinstance(lr, dict):
-                lines.append(_text(lr))
+        for line_ref in _walk_values(affects, "LineRef"):
+            line = _text(line_ref)
+            if line and line not in lines:
+                lines.append(line)
         alerts.append(
             TransitAlert(
                 id=sid or title[:40],
@@ -144,4 +143,19 @@ def _walk_key(obj: Any, key: str) -> list[dict[str, Any]]:
     elif isinstance(obj, list):
         for item in obj:
             found.extend(_walk_key(item, key))
+    return found
+
+
+def _walk_values(obj: Any, key: str) -> list[Any]:
+    """Return scalar, mapping, and list values for a recursive key."""
+    found: list[Any] = []
+    if isinstance(obj, dict):
+        for candidate, value in obj.items():
+            if candidate.casefold() == key.casefold():
+                found.extend(value if isinstance(value, list) else [value])
+            else:
+                found.extend(_walk_values(value, key))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(_walk_values(item, key))
     return found

@@ -8,7 +8,7 @@ MCP adapter → application services → domain protocols → providers → HTTP
 
 | Layer | Responsibility |
 | --- | --- |
-| `adapters/mcp/` | FastMCP registration, input validation, serialization, stdio |
+| `adapters/mcp/` | MCPServer registration, input validation, serialization, stdio |
 | `services/` | Application behavior and response envelopes |
 | `domain/` | Models, provider protocols, matching rules, and domain errors |
 | `providers/` | DataGrandLyon, Photon, SIRI, GTFS, Transitous, and fixture access |

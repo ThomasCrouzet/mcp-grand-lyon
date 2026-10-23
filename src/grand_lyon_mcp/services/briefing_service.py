@@ -140,8 +140,15 @@ class BriefingService:
         if compare_with_previous:
             prev = await self._profiles.last_briefing_snapshot(profile)
             if prev:
+                previous_facts = prev.get("facts")
+                if not isinstance(previous_facts, dict):
+                    previous_facts = {}
                 for key in ("departures", "velov", "mobility"):
-                    if key in facts and key in prev and facts[key] != prev.get(key):
+                    if (
+                        key in facts
+                        and key in previous_facts
+                        and facts[key] != previous_facts.get(key)
+                    ):
                         changes.append(
                             BriefingChange(key=key, previous="(previous)", current="(updated)")
                         )

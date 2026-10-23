@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import grand_lyon_mcp.setup_wizard as setup_wizard
 from grand_lyon_mcp.setup_wizard import (
     client_config_snippet,
     copy_config_examples,
@@ -38,6 +39,44 @@ def test_parse_and_write_env(tmp_path: Path, repo_root: Path) -> None:
     assert "/abs/bin" in snippet
 
 
+def test_env_file_round_trips_shell_characters(tmp_path: Path) -> None:
+    dest = tmp_path / "secrets.env"
+    expected = 'spaces $dollar `tick` "double" \\ slash'
+
+    write_env_file(dest, {"DATAGRANDLYON_PASSWORD": expected})
+
+    assert parse_env_file(dest)["DATAGRANDLYON_PASSWORD"] == expected
+
+
+def test_env_file_rejects_multiline_values(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="line breaks"):
+        write_env_file(tmp_path / "secrets.env", {"DATAGRANDLYON_PASSWORD": "first\nsecond"})
+
+
+def test_load_user_environment_preserves_parent_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "config"
+    marker = tmp_path / "must-not-exist"
+    saved_password = f"$(touch {marker})"
+    write_env_file(
+        config / "secrets.env",
+        {
+            "DATAGRANDLYON_USERNAME": "saved-account",
+            "DATAGRANDLYON_PASSWORD": saved_password,
+        },
+    )
+    monkeypatch.setenv("GRAND_LYON_MCP_CONFIG_DIR", str(config))
+    monkeypatch.setenv("DATAGRANDLYON_USERNAME", "parent-account")
+    monkeypatch.delenv("DATAGRANDLYON_PASSWORD", raising=False)
+
+    setup_wizard.load_user_environment()
+
+    assert setup_wizard.os.environ["DATAGRANDLYON_USERNAME"] == "parent-account"
+    assert setup_wizard.os.environ["DATAGRANDLYON_PASSWORD"] == saved_password
+    assert not marker.exists()
+
+
 def test_copy_config_examples(tmp_path: Path) -> None:
     written = copy_config_examples(tmp_path)
     assert "settings.yaml" in written or (tmp_path / "settings.yaml").exists()
@@ -62,6 +101,9 @@ def test_non_interactive_live_without_creds_fails(
 
 
 def test_non_interactive_live_with_creds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.setattr(setup_wizard, "_repo_root", lambda: checkout)
     monkeypatch.setenv("GRAND_LYON_MCP_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("GRAND_LYON_MCP_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DATAGRANDLYON_USERNAME", "user@example.com")
@@ -71,6 +113,7 @@ def test_non_interactive_live_with_creds(tmp_path: Path, monkeypatch: pytest.Mon
         offline=False,
         skip_install=True,
         skip_migrate=True,
+        skip_doctor=True,
         force_config=True,
     )
     assert code == 0

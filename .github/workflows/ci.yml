@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
@@ -62,6 +62,17 @@ jobs:
           UV_CONCURRENT_BUILDS: "1"
           UV_CONCURRENT_DOWNLOADS: "2"
           UV_CONCURRENT_INSTALLS: "2"
+      - name: Verify installed wheel setup
+        run: |
+          set -euo pipefail
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --no-project --python 3.12 python scripts/verify_setup.py \
+            --wheel "${wheels[0]}" --artifact-dir "$RUNNER_TEMP/setup-evidence"
+        env:
+          UV_CONCURRENT_BUILDS: "1"
+          UV_CONCURRENT_DOWNLOADS: "2"
+          UV_CONCURRENT_INSTALLS: "2"
       - name: Upload distributions
         uses: actions/upload-artifact@v7
         with:
@@ -75,9 +86,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # CLI en conteneur : aucun token GitHub ni licence requis (robuste aussi sur
-      # les PR Dependabot dont le GITHUB_TOKEN est en lecture seule).
+      # The container CLI needs no GitHub token or license.
+      # This also works for Dependabot pull requests with a read-only token.
       - name: Gitleaks secret scan
         run: |
           docker run --rm -v "${{ github.workspace }}:/repo" \
-            zricethezav/gitleaks:latest detect --source=/repo --redact --verbose
+            zricethezav/gitleaks:v8.30.1 detect --source=/repo --redact --verbose

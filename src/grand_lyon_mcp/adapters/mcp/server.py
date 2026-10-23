@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from grand_lyon_mcp.adapters.mcp.tools import (
     PUBLIC_TOOL_NAMES,
@@ -27,11 +27,12 @@ def get_app() -> AppContainer:
     return _app
 
 
-def create_mcp_server(app: AppContainer) -> FastMCP:
+def create_mcp_server(app: AppContainer) -> MCPServer:
     global _app
     _app = app
-    mcp = FastMCP(
+    mcp = MCPServer(
         name="grand-lyon-mcp",
+        version=__version__,
         instructions=(
             "Serveur MCP local pour les services de la Métropole de Lyon "
             f"(v{__version__}). Outils métier en lecture seule."

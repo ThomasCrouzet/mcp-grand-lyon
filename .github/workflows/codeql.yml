@@ -31,7 +31,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@v7
       - name: Initialize CodeQL
@@ -39,7 +38,39 @@ jobs:
         with:
           languages: python
       - name: Perform CodeQL Analysis
+        id: analyze
         uses: github/codeql-action/analyze@v4
         with:
+          output: ${{ runner.temp }}/codeql-results
           upload: never
           upload-database: false
+      - name: Fail on CodeQL findings
+        env:
+          SARIF_DIR: ${{ steps.analyze.outputs.sarif-output }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          sarif_dir = Path(os.environ["SARIF_DIR"])
+          sarif_files = sorted(sarif_dir.glob("*.sarif"))
+          if not sarif_files:
+              raise SystemExit("CodeQL did not produce a SARIF file")
+
+          findings = []
+          for sarif_file in sarif_files:
+              sarif = json.loads(sarif_file.read_text(encoding="utf-8"))
+              for run in sarif.get("runs", []):
+                  for result in run.get("results", []):
+                      level = result.get("level", "warning")
+                      if level not in {"error", "warning"} or result.get("suppressions"):
+                          continue
+                      message = result.get("message", {}).get("text", "")
+                      findings.append((result.get("ruleId", "unknown"), level, message))
+
+          for rule_id, level, message in findings:
+              print(f"{level}: {rule_id}: {message}")
+          if findings:
+              raise SystemExit(f"CodeQL found {len(findings)} unsuppressed result(s)")
+          PY

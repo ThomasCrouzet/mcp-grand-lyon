@@ -48,7 +48,7 @@ Resolve an address, stop, station, or personal place. The result contains `candi
 
 | Argument | Type | Default or limit |
 | --- | --- | --- |
-| `query` | string or null | Up to 200 characters |
+| `query` | string | Required; up to 200 characters |
 | `near` | PlaceRef or null | Optional location hint |
 | `types` | string list or null | Up to 20 items |
 | `limit` | integer | 5; range 1–20 |

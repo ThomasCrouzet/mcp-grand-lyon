@@ -29,6 +29,14 @@ app.add_typer(sync_app, name="sync")
 app.add_typer(snapshot_app, name="snapshot")
 
 
+@app.callback()
+def load_user_environment() -> None:
+    """Load the user secrets file before a command reads settings."""
+    from grand_lyon_mcp.setup_wizard import load_user_environment as load
+
+    load()
+
+
 def _run(coro: object) -> object:
     return asyncio.run(coro)  # type: ignore[arg-type]
 
@@ -543,6 +551,7 @@ def setup_cmd(
         force_config=force_config,
         skip_install=skip_install,
         skip_migrate=skip_migrate,
+        skip_doctor=False,
     )
     raise typer.Exit(code)
 
@@ -590,14 +599,20 @@ def client_config_cmd(
     ),
 ) -> None:
     """Affiche un bloc `mcpServers` JSON prêt à coller (Claude Desktop, Cursor…)."""
-    from grand_lyon_mcp.setup_wizard import client_config_snippet
+    from grand_lyon_mcp.setup_wizard import (
+        client_config_snippet,
+        client_environment,
+        resolve_client_launch,
+    )
 
-    root = Path(__file__).resolve().parents[2]
-    if wrapper:
-        command = str(root / "scripts" / "run_mcp.sh")
-    else:
-        command = str(root / ".venv" / "bin" / "grand-lyon-mcp")
-    typer.echo(client_config_snippet(command=command))
+    command, command_args = resolve_client_launch(prefer_wrapper=wrapper)
+    typer.echo(
+        client_config_snippet(
+            command=command,
+            command_args=command_args,
+            environment=client_environment(),
+        )
+    )
 
 
 @app.command("smoke")

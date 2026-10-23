@@ -151,10 +151,10 @@ async def test_tool_input_schemas_stable(app_container) -> None:
     mcp = create_mcp_server(app_container)
     tools = {t.name: t for t in await mcp.list_tools()}
     for name, args in expected.items():
-        props = set(tools[name].inputSchema.get("properties", {}))
+        props = set(tools[name].input_schema.get("properties", {}))
         assert props == args, f"{name}: dérive de schéma {props ^ args}"
 
-    required = {t.name: set(t.inputSchema.get("required", [])) for t in tools.values()}
+    required = {t.name: set(t.input_schema.get("required", [])) for t in tools.values()}
     assert "stop" in required["lyon_next_departures"]
     assert {"origin", "destination"} <= required["lyon_trip_options"]
     assert "item" in required["lyon_waste_dropoff"]
@@ -163,8 +163,8 @@ async def test_tool_input_schemas_stable(app_container) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_via_fastmcp(app_container) -> None:
-    """Use real FastMCP server list if available."""
+async def test_list_tools_via_mcp_server(app_container) -> None:
+    """Read the registered tools from the MCP SDK server."""
     from grand_lyon_mcp.adapters.mcp.server import create_mcp_server
     from grand_lyon_mcp.adapters.mcp.tools import PUBLIC_TOOL_NAMES
 

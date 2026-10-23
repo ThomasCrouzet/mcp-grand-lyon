@@ -30,8 +30,16 @@ The wrapper uses the checkout's `.venv/bin/grand-lyon-mcp`. Run
 
 ## Installed wheel
 
-Set `command` to the absolute installed `grand-lyon-mcp` executable. The path
-generator is for source checkouts; it does not locate a wheel environment.
+Install the released package in an isolated environment:
+
+```bash
+uv tool install grand-lyon-mcp
+grand-lyon-mcp setup --yes --offline
+grand-lyon-mcp client-config
+```
+
+The final command prints a configuration with the absolute installed executable
+path. Add that configuration to the client.
 
 ```json
 {
@@ -46,15 +54,17 @@ generator is for source checkouts; it does not locate a wheel environment.
 ```
 
 Configuration templates, SQL migrations, and demonstration fixtures are included
-in the wheel. A source checkout is not required at runtime.
+in the wheel. Setup migrates the database. The application also runs migrations
+at startup. A source checkout is not required at runtime.
 
 ## Credentials
 
-Keep credentials out of client configuration files. For live use, the server can
-inherit `DATAGRANDLYON_USERNAME` and `DATAGRANDLYON_PASSWORD` from its parent.
-The source-checkout wrapper can also load `secrets.env` from the user configuration
-directory. It checks the Linux path and then the macOS path. Set
-`GRAND_LYON_MCP_SECRETS_FILE` to select a different credential file.
+Keep credentials out of client configuration files. For live use, run
+`grand-lyon-mcp setup` and select live mode. The CLI loads `secrets.env` from the
+user configuration directory. Nonempty process environment values take precedence.
+
+The source-checkout wrapper checks the Linux configuration path, then the macOS
+path. Set `GRAND_LYON_MCP_SECRETS_FILE` to select a different wrapper credential file.
 
 The wrapper then loads the checkout's `.env`, if present. Without credentials,
 it enables fixture mode unless offline mode was explicitly set. Use

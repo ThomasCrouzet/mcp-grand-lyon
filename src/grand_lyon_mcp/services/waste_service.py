@@ -9,7 +9,14 @@ from typing import Any
 
 import yaml
 
-from grand_lyon_mcp.domain.common import Envelope, PlaceRef, ResultStatus, make_envelope
+from grand_lyon_mcp.domain.common import (
+    Envelope,
+    PlaceRef,
+    ResultStatus,
+    WarningCode,
+    WarningItem,
+    make_envelope,
+)
 from grand_lyon_mcp.domain.geo import Point
 from grand_lyon_mcp.domain.protocols import WasteProvider
 from grand_lyon_mcp.domain.waste import WasteCategory, WasteClassification
@@ -195,6 +202,30 @@ class WasteService:
     ) -> Envelope:
         generated = now_paris()
         classification = self._taxonomy.classify(item)
+        if transport != "car":
+            return make_envelope(
+                status=ResultStatus.INVALID_REQUEST,
+                generated_at=generated,
+                summary=f"Unsupported transport: {transport}.",
+                data={
+                    "classification": classification.model_dump(mode="json"),
+                    "facilities": [],
+                    "transport": transport,
+                    "open_at": open_at.isoformat() if open_at else None,
+                },
+            )
+        if open_at is not None and open_at.utcoffset() is None:
+            return make_envelope(
+                status=ResultStatus.INVALID_REQUEST,
+                generated_at=generated,
+                summary="open_at must include a UTC offset.",
+                data={
+                    "classification": classification.model_dump(mode="json"),
+                    "facilities": [],
+                    "transport": transport,
+                    "open_at": open_at.isoformat(),
+                },
+            )
         status = ResultStatus.OK
         if classification.candidates:
             status = ResultStatus.AMBIGUOUS
@@ -202,19 +233,49 @@ class WasteService:
             status = ResultStatus.NOT_FOUND
 
         facilities: list[dict[str, object]] = []
+        warnings: list[WarningItem] = []
         if self._provider and location is not None:
             env = await self._places.resolve_place(place=location, limit=1)
             cands = env.data.get("candidates") or []
             if cands:
                 point = Point(cands[0]["latitude"], cands[0]["longitude"])
-            elif location.latitude is not None:
-                point = Point(location.latitude, location.longitude)  # type: ignore[arg-type]
+            elif location.latitude is not None and location.longitude is not None:
+                point = Point(location.latitude, location.longitude)
             else:
-                point = Point(45.75, 4.85)
+                return make_envelope(
+                    status=ResultStatus.NOT_FOUND,
+                    generated_at=generated,
+                    summary="The drop-off location could not be resolved.",
+                    data={
+                        "classification": classification.model_dump(mode="json"),
+                        "facilities": [],
+                        "transport": transport,
+                        "open_at": open_at.isoformat() if open_at else None,
+                    },
+                    warnings=env.warnings,
+                    degraded=bool(env.warnings),
+                )
             facs = await self._provider.facilities_near(
                 point, category=classification.category, radius_m=radius_m, limit=limit
             )
+            if open_at is not None:
+                unknown_count = sum(facility.open_status == "unknown" for facility in facs)
+                facs = [facility for facility in facs if facility.open_status == "open"]
+                if unknown_count:
+                    warnings.append(
+                        WarningItem(
+                            code=WarningCode.PARTIAL_RESULT.value,
+                            source="waste_opening_hours",
+                            message=(
+                                f"Omitted {unknown_count} facilities with unverified opening hours."
+                            ),
+                            retryable=False,
+                        )
+                    )
             facilities = [f.model_dump(mode="json") for f in facs]
+
+        if warnings and status == ResultStatus.OK:
+            status = ResultStatus.PARTIAL
 
         summary = f"« {item} » → {classification.category.value}" + (
             " (dangereux)" if classification.hazardous else ""
@@ -229,4 +290,6 @@ class WasteService:
                 "transport": transport,
                 "open_at": open_at.isoformat() if open_at else None,
             },
+            warnings=warnings,
+            degraded=bool(warnings),
         )

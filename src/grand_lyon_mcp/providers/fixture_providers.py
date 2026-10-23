@@ -44,12 +44,10 @@ class FixturePlaceProvider:
         if data is None:
             return []
         results = parse_photon_response(data, limit=limit)
-        q = query.lower()
-        filtered = [
-            r for r in results if q in r.name.lower() or q in r.label.lower() or "part" in q
-        ]
-        if not filtered:
-            filtered = results
+        q = query.casefold().strip()
+        if not q:
+            return []
+        filtered = [r for r in results if q in r.name.casefold() or q in r.label.casefold()]
         return filtered[:limit]
 
     async def reverse(self, point: Point) -> PlaceCandidate | None:
@@ -86,6 +84,15 @@ class FixtureTransitRealtime:
             for row in dp if isinstance(dp, list) else dp.get("values", []):
                 if not isinstance(row, dict):
                     continue
+                row_stop = str(
+                    row.get("stop_id")
+                    or row.get("stop_ref")
+                    or row.get("arret_id")
+                    or row.get("arret")
+                    or ""
+                )
+                if not _fixture_stop_matches(stop_id, row_stop):
+                    continue
                 line_name = str(row.get("ligne") or row.get("line") or "?")
                 if line:
                     from grand_lyon_mcp.domain.transit_line import line_matches
@@ -114,7 +121,11 @@ class FixtureTransitRealtime:
                     )
                 )
             return deps[:limit]
-        deps = parse_estimated_timetable(data)
+        deps = [
+            departure
+            for departure in parse_estimated_timetable(data)
+            if departure.stop_ref and _fixture_stop_matches(stop_id, departure.stop_ref)
+        ]
         if line:
             from grand_lyon_mcp.domain.transit_line import line_matches
 
@@ -122,6 +133,13 @@ class FixtureTransitRealtime:
         if direction:
             deps = [d for d in deps if direction.lower() in d.destination.lower()]
         return deps[:limit]
+
+
+def _fixture_stop_matches(requested: str, observed: str) -> bool:
+    """Match a fixture stop reference to a service stop identifier."""
+    requested_id = requested.rstrip(":").rsplit(":", 1)[-1].casefold()
+    observed_id = observed.rstrip(":").rsplit(":", 1)[-1].casefold()
+    return bool(requested_id and requested_id == observed_id)
 
 
 class FixtureTransitAlerts:

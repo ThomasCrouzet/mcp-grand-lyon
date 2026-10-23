@@ -32,7 +32,7 @@ async def test_all_fixtures(fixtures_dir: Path) -> None:
     assert await places.reverse(p)
 
     rt = FixtureTransitRealtime(fixtures_dir)
-    deps = await rt.get_departures("x", line="A", limit=5)
+    deps = await rt.get_departures("gtfs:stop:BEL1", line="A", limit=5)
     assert deps
 
     al = FixtureTransitAlerts(fixtures_dir)

@@ -114,15 +114,18 @@ class Verification:
                 "-c",
                 (
                     "import json,sys,grand_lyon_mcp; "
+                    "from importlib.metadata import version; "
                     "from grand_lyon_mcp.resources import fixtures_dir; "
                     "print(json.dumps({'package':grand_lyon_mcp.__file__,"
-                    "'fixtures':str(fixtures_dir()),'python':sys.version}))"
+                    "'fixtures':str(fixtures_dir()),'python':sys.version,"
+                    "'version':version('grand-lyon-mcp')}))"
                 ),
             ]
         )
         installed = json.loads(result.stdout)
         assert Path(installed["package"]).is_relative_to(self.output / "venv")
         self.report["installed"] = installed
+        self.report["version"] = installed["version"]
         shutil.copytree(installed["fixtures"], self.fixtures)
         self.report["fixtures_sha256"] = {
             str(path.relative_to(self.fixtures)): digest(path)
@@ -221,6 +224,7 @@ class Verification:
                 },
             )
             assert initialized["serverInfo"]["name"] == "grand-lyon-mcp"
+            assert initialized["serverInfo"]["version"] == self.report["version"]
             await request("notifications/initialized", notification=True)
             tools = await request("tools/list")
             assert len(tools["tools"]) == 10
@@ -250,7 +254,8 @@ class Verification:
 
     async def packaged_mobility(self):
         folder, env = self.environment("packaged-mobility")
-        self.command([self.binary, "version"], env=env)
+        version = self.command([self.binary, "version"], env=env).stdout.strip()
+        assert version == self.report["version"]
         self.command(
             [self.binary, "sync", "gtfs", "--from-file", self.fixtures / "gtfs" / "mini_gtfs.zip"],
             env=env,

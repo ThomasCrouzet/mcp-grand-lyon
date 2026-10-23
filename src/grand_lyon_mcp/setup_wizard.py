@@ -32,10 +32,45 @@ ENV_KEYS = (
     "TRANSITOUS_ENABLED",
     "TRANSITOUS_BASE_URL",
 )
+CLIENT_ENV_KEYS = (
+    "GRAND_LYON_MCP_CONFIG_DIR",
+    "GRAND_LYON_MCP_DATA_DIR",
+    "GRAND_LYON_MCP_DB_PATH",
+    "GRAND_LYON_MCP_OFFLINE",
+)
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+def _repo_root() -> Path | None:
+    candidate = Path(__file__).resolve().parents[2]
+    if (candidate / "pyproject.toml").is_file() and (candidate / "src/grand_lyon_mcp").is_dir():
+        return candidate
+    return None
+
+
+def resolve_client_launch(*, prefer_wrapper: bool = True) -> tuple[str, list[str]]:
+    """Return an absolute command and optional module arguments."""
+    repo = _repo_root()
+    if prefer_wrapper and repo is not None:
+        wrapper = repo / "scripts" / "run_mcp.sh"
+        if wrapper.is_file():
+            return str(wrapper.resolve()), []
+
+    executable_name = "grand-lyon-mcp.exe" if os.name == "nt" else "grand-lyon-mcp"
+    candidates: list[Path] = []
+    invoked = Path(sys.argv[0]).expanduser()
+    if invoked.name == executable_name:
+        candidates.append(invoked)
+    candidates.append(Path(sys.executable).with_name(executable_name))
+    if repo is not None:
+        candidates.append(repo / ".venv" / "bin" / "grand-lyon-mcp")
+    located = shutil.which("grand-lyon-mcp")
+    if located:
+        candidates.append(Path(located))
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved.is_file():
+            return str(resolved), []
+    return str(Path(sys.executable).resolve()), ["-m", "grand_lyon_mcp"]
 
 
 def _has_rich() -> bool:
@@ -193,7 +228,27 @@ def parse_env_file(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
-        values[key.strip()] = val.strip().strip('"').strip("'")
+        value = val.strip()
+        if not value:
+            values[key.strip()] = ""
+            continue
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            decoded: list[str] = []
+            escaped = False
+            for character in value[1:-1]:
+                if escaped:
+                    decoded.append(character)
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                else:
+                    decoded.append(character)
+            if escaped:
+                decoded.append("\\")
+            value = "".join(decoded)
+        elif len(value) >= 2 and value[0] == value[-1] == "'":
+            value = value[1:-1]
+        values[key.strip()] = value
     return values
 
 
@@ -201,10 +256,23 @@ def _shell_quote_env_value(value: str) -> str:
     """Quote value for POSIX `source` safety (spaces, etc.)."""
     if value == "":
         return ""
+    if any(character in value for character in ("\n", "\r", "\0")):
+        raise ValueError("Environment values cannot contain line breaks or null bytes")
     escaped = (
         value.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
     )
     return f'"{escaped}"'
+
+
+def load_user_environment() -> None:
+    """Load approved user settings without evaluating shell syntax."""
+    config_dir = Path(
+        os.environ.get("GRAND_LYON_MCP_CONFIG_DIR") or CONFIG_DIR_DEFAULT
+    ).expanduser()
+    values = parse_env_file(config_dir / SECRETS_NAME)
+    for key in ENV_KEYS:
+        if key in values and not os.environ.get(key):
+            os.environ[key] = values[key]
 
 
 def write_env_file(path: Path, values: dict[str, str], *, template: Path | None = None) -> None:
@@ -283,7 +351,18 @@ def _patch_settings_offline(path: Path, offline: bool) -> None:
         path.write_text(patched, encoding="utf-8")
 
 
-def client_config_snippet(*, command: str) -> str:
+def client_environment(values: dict[str, str] | None = None) -> dict[str, str]:
+    """Return nonsecret settings that an MCP client must preserve."""
+    source = values if values is not None else os.environ
+    return {key: source[key] for key in CLIENT_ENV_KEYS if source.get(key)}
+
+
+def client_config_snippet(
+    *,
+    command: str,
+    command_args: list[str] | None = None,
+    environment: dict[str, str] | None = None,
+) -> str:
     """Bloc de configuration prêt à coller pour un client MCP stdio.
 
     Format ``mcpServers`` JSON standard, compatible Claude Desktop, Cursor et la
@@ -292,14 +371,13 @@ def client_config_snippet(*, command: str) -> str:
     """
     import json
 
-    block = {
-        "mcpServers": {
-            "grand-lyon": {
-                "command": command,
-                "args": ["serve", "--transport", "stdio"],
-            }
-        }
+    server: dict[str, object] = {
+        "command": command,
+        "args": [*(command_args or []), "serve", "--transport", "stdio"],
     }
+    if environment:
+        server["env"] = environment
+    block = {"mcpServers": {"grand-lyon": server}}
     return json.dumps(block, indent=2, ensure_ascii=False)
 
 
@@ -310,6 +388,7 @@ def run_setup(
     force_config: bool = False,
     skip_install: bool = False,
     skip_migrate: bool = False,
+    skip_doctor: bool = False,
 ) -> int:
     """Run the setup wizard. Returns process exit code."""
     repo = _repo_root()
@@ -377,6 +456,7 @@ def run_setup(
             force_config=force_config,
             skip_install=skip_install,
             skip_migrate=skip_migrate,
+            skip_doctor=skip_doctor,
             repo=repo,
         )
 
@@ -519,6 +599,7 @@ def run_setup(
         force_config=force,
         skip_install=skip_install,
         skip_migrate=skip_migrate,
+        skip_doctor=skip_doctor,
         repo=repo,
     )
 
@@ -530,28 +611,29 @@ def _default_values(
     offline: bool,
     existing: dict[str, str],
 ) -> dict[str, str]:
-    db_path = existing.get("GRAND_LYON_MCP_DB_PATH") or str(data_dir / "grand_lyon_mcp.db")
+    def current(key: str, default: str) -> str:
+        return os.environ.get(key) or existing.get(key) or default
+
+    db_path = current("GRAND_LYON_MCP_DB_PATH", str(data_dir / "grand_lyon_mcp.db"))
     return {
         "DATAGRANDLYON_USERNAME": existing.get("DATAGRANDLYON_USERNAME", ""),
         "DATAGRANDLYON_PASSWORD": existing.get("DATAGRANDLYON_PASSWORD", ""),
         "GRAND_LYON_MCP_CONFIG_DIR": str(config_dir),
         "GRAND_LYON_MCP_DATA_DIR": str(data_dir),
         "GRAND_LYON_MCP_DB_PATH": db_path,
-        "GRAND_LYON_MCP_LOG_LEVEL": existing.get("GRAND_LYON_MCP_LOG_LEVEL", "INFO"),
+        "GRAND_LYON_MCP_LOG_LEVEL": current("GRAND_LYON_MCP_LOG_LEVEL", "INFO"),
         "GRAND_LYON_MCP_OFFLINE": "true" if offline else "false",
-        "GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS": existing.get(
+        "GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS": current(
             "GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS", "5"
         ),
-        "GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS": existing.get(
+        "GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS": current(
             "GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS", "20"
         ),
-        "GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS": existing.get(
+        "GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS": current(
             "GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS", "6"
         ),
-        "TRANSITOUS_ENABLED": existing.get("TRANSITOUS_ENABLED", "false"),
-        "TRANSITOUS_BASE_URL": existing.get(
-            "TRANSITOUS_BASE_URL", "https://api.transitous.org/api/"
-        ),
+        "TRANSITOUS_ENABLED": current("TRANSITOUS_ENABLED", "false"),
+        "TRANSITOUS_BASE_URL": current("TRANSITOUS_BASE_URL", "https://api.transitous.org/api/"),
     }
 
 
@@ -564,14 +646,19 @@ def _apply(
     force_config: bool,
     skip_install: bool,
     skip_migrate: bool,
-    repo: Path,
+    skip_doctor: bool,
+    repo: Path | None,
 ) -> int:
     _rule("Application")
     data_dir.mkdir(parents=True, exist_ok=True)
     config_dir.mkdir(parents=True, exist_ok=True)
 
-    template = repo / ".env.example"
-    write_env_file(secrets_path, values, template=template if template.is_file() else None)
+    template = repo / ".env.example" if repo is not None else None
+    write_env_file(
+        secrets_path,
+        values,
+        template=template if template and template.is_file() else None,
+    )
     _print(f"✓ Secrets écrits dans {secrets_path} (chmod 600)")
 
     offline_flag = values.get("GRAND_LYON_MCP_OFFLINE", "false").lower() == "true"
@@ -581,15 +668,10 @@ def _apply(
     else:
         _print(f"✓ Config déjà présente dans {config_dir} (offline={offline_flag})")
 
-    local_env = repo / ".env"
-    # Always refresh local .env so make serve picks up the latest mode
-    write_env_file(local_env, values, template=template if template.is_file() else None)
-    _print(f"✓ Fichier local {local_env} (gitignored)")
-
-    if not skip_install:
+    if not skip_install and repo is not None:
         _print("→ Installation des dépendances (uv sync)…")
         rc = subprocess.run(
-            ["uv", "sync", "--all-extras", "--dev"],
+            ["uv", "sync", "--locked", "--all-extras", "--dev"],
             cwd=repo,
             check=False,
         ).returncode
@@ -603,8 +685,8 @@ def _apply(
     if not skip_migrate:
         _print("→ Migrations SQLite…")
         rc = subprocess.run(
-            ["uv", "run", "grand-lyon-mcp", "db", "migrate"],
-            cwd=repo,
+            [sys.executable, "-m", "grand_lyon_mcp", "db", "migrate"],
+            cwd=repo or data_dir,
             env=env,
             check=False,
         ).returncode
@@ -612,20 +694,26 @@ def _apply(
             _print("✗ db migrate a échoué", err=True)
             return rc
 
-    _print("→ Diagnostic (doctor)…")
-    subprocess.run(
-        ["uv", "run", "grand-lyon-mcp", "doctor"],
-        cwd=repo,
-        env=env,
-        check=False,
-    )
+    if not skip_doctor:
+        _print("→ Diagnostic (doctor)…")
+        rc = subprocess.run(
+            [sys.executable, "-m", "grand_lyon_mcp", "doctor"],
+            cwd=repo or data_dir,
+            env=env,
+            check=False,
+        ).returncode
+        if rc != 0:
+            _print("✗ doctor a échoué", err=True)
+            return rc
 
-    wrapper = repo / "scripts" / "run_mcp.sh"
-    venv_bin = repo / ".venv" / "bin" / "grand-lyon-mcp"
-    command = str(wrapper if wrapper.is_file() else venv_bin)
+    command, command_args = resolve_client_launch(prefer_wrapper=True)
 
     _rule("Configuration client MCP")
-    snippet = client_config_snippet(command=command)
+    snippet = client_config_snippet(
+        command=command,
+        command_args=command_args,
+        environment=client_environment(values),
+    )
     _print(snippet)
     snippet_out = config_dir / "mcp-client.snippet.json"
     snippet_out.write_text(snippet, encoding="utf-8")
@@ -633,15 +721,16 @@ def _apply(
 
     _rule("Prochaines étapes")
     if offline_flag:
+        serve_command = "make serve" if repo is not None else "grand-lyon-mcp serve"
         _print(
             "Mode offline prêt. Lancez :\n"
-            "  [bold]make serve[/bold]\n"
+            f"  [bold]{serve_command}[/bold]\n"
             "ou collez le bloc ci-dessus dans la config de votre client MCP "
             "(Claude Desktop, Cursor…).\n\n"
             "Pour ajouter un compte plus tard : [bold]make setup[/bold] "
             "et répondez [bold]Oui[/bold] à la question DataGrandLyon."
             if _has_rich()
-            else "Mode offline. make serve  |  plus tard: make setup"
+            else f"Mode offline. {serve_command}"
         )
     else:
         _print(

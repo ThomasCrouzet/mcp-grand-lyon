@@ -21,7 +21,7 @@ GRAND_LYON_MCP_OFFLINE=true uv run --offline --no-sync pytest -m "not live" --co
 
 `make quality` combines these checks. [Testing](docs/testing.md) gives commands
 that retain quality reports and installed-wheel MCP transcripts. CI must pass
-for Python 3.12 and 3.13. Keep the 85% coverage minimum.
+for Python 3.12 through 3.15. Keep the 85% coverage minimum.
 
 Keep generated reports in local storage. Do not upload reports to GitHub.
 

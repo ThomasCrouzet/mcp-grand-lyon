@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from grand_lyon_mcp.domain.common import (
@@ -48,8 +48,20 @@ class JourneyService:
         preferences: dict[str, Any] | None = None,
     ) -> Envelope:
         generated = now_paris()
+        if departure_at is not None and departure_at.utcoffset() is None:
+            return self._invalid(generated, "departure_at must include a UTC offset")
+        if arrival_before is not None and arrival_before.utcoffset() is None:
+            return self._invalid(generated, "arrival_before must include a UTC offset")
         departure_at = departure_at or generated
-        modes = modes or ["tcl", "velov", "park_and_ride", "car", "walk"]
+        if arrival_before is not None and arrival_before <= departure_at:
+            return self._invalid(generated, "arrival_before must be after departure_at")
+        if modes is not None and not modes:
+            return self._invalid(generated, "modes must contain at least one mode")
+        modes = modes if modes is not None else [mode.value for mode in TravelMode]
+        supported_modes = {mode.value for mode in TravelMode}
+        invalid_modes = sorted(set(modes) - supported_modes)
+        if invalid_modes:
+            return self._invalid(generated, f"Unsupported travel modes: {', '.join(invalid_modes)}")
         preferences = preferences or {}
         warnings: list[WarningItem] = []
 
@@ -269,9 +281,58 @@ class JourneyService:
                     )
                 )
 
+        timed_options: list[TripOption] = []
+        for option in trip_options:
+            option_departure = option.departure_at or departure_at
+            option_arrival = option.arrival_at
+            if option_arrival is None and option.estimated_duration_seconds is not None:
+                option_arrival = option_departure + timedelta(
+                    seconds=option.estimated_duration_seconds
+                )
+            timed_options.append(
+                option.model_copy(
+                    update={"departure_at": option_departure, "arrival_at": option_arrival}
+                )
+            )
+
+        if bool(preferences.get("avoid_disruptions", True)):
+            timed_options = [option for option in timed_options if not option.alerts]
+
+        if bool(preferences.get("wheelchair", False)):
+            accessible_values = {"accessible", "wheelchair", "wheelchair_accessible"}
+            timed_options = [
+                option
+                for option in timed_options
+                if (option.accessibility or "").lower() in accessible_values
+            ]
+            if not timed_options:
+                warnings.append(
+                    WarningItem(
+                        code=WarningCode.PARTIAL_RESULT.value,
+                        source="journey_planner",
+                        message="No option has verified wheelchair accessibility.",
+                        retryable=False,
+                    )
+                )
+
+        if arrival_before is not None:
+            timed_options = [
+                option
+                for option in timed_options
+                if option.arrival_at is not None and option.arrival_at <= arrival_before
+            ]
+
+        trip_options = timed_options
         trip_options.sort(key=lambda t: t.score, reverse=True)
         recommended = trip_options[0].mode.value if trip_options else None
-        status = ResultStatus.PARTIAL if warnings else ResultStatus.OK
+        if not trip_options and bool(preferences.get("wheelchair", False)):
+            status = ResultStatus.UNAVAILABLE
+        elif not trip_options and (
+            arrival_before is not None or bool(preferences.get("avoid_disruptions", True))
+        ):
+            status = ResultStatus.NOT_FOUND
+        else:
+            status = ResultStatus.PARTIAL if warnings else ResultStatus.OK
         return make_envelope(
             status=status,
             generated_at=generated,
@@ -279,9 +340,28 @@ class JourneyService:
             data={
                 "recommended_mode": recommended,
                 "options": [t.model_dump(mode="json") for t in trip_options],
+                "departure_at": departure_at.isoformat(),
+                "arrival_before": arrival_before.isoformat() if arrival_before else None,
             },
             warnings=warnings,
             degraded=bool(warnings),
+        )
+
+    @staticmethod
+    def _invalid(generated: datetime, message: str) -> Envelope:
+        return make_envelope(
+            status=ResultStatus.INVALID_REQUEST,
+            generated_at=generated,
+            summary=message,
+            data={"recommended_mode": None, "options": []},
+            warnings=[
+                WarningItem(
+                    code=WarningCode.INVALID_REQUEST.value,
+                    source="journey_service",
+                    message=message,
+                    retryable=False,
+                )
+            ],
         )
 
     def _score(

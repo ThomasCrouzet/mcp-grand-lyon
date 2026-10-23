@@ -6,7 +6,7 @@ Use [GitHub private vulnerability reporting](https://github.com/ThomasCrouzet/mc
 Do not disclose an unpatched vulnerability in a public issue. Include reproduction
 steps, affected versions, and expected impact. The target response time is seven days.
 
-The maintained version series is `0.1.x`.
+Only the latest release receives security fixes.
 
 ## Boundaries
 

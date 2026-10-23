@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from grand_lyon_mcp.domain.common import PlaceRef
+from grand_lyon_mcp.domain.facilities import FacilityCategory
+from grand_lyon_mcp.domain.journeys import TravelMode
 from grand_lyon_mcp.domain.parking import ParkingType
 from grand_lyon_mcp.infrastructure.logging import get_logger
 
@@ -45,7 +47,7 @@ class StrictModel(BaseModel):
 
 
 class ResolvePlaceInput(StrictModel):
-    query: str | None = Field(default=None, max_length=200)
+    query: str = Field(min_length=1, max_length=200)
     near: PlaceRef | None = None
     types: list[str] | None = Field(default=None, max_length=20)
     limit: int = Field(default=5, ge=1, le=20)
@@ -78,8 +80,24 @@ class TripOptionsInput(StrictModel):
     destination: PlaceRef
     departure_at: datetime | None = None
     arrival_before: datetime | None = None
-    modes: list[str] | None = Field(default=None, max_length=10)
+    modes: list[TravelMode] | None = Field(default=None, min_length=1, max_length=5)
     preferences: TripPreferences | None = None
+
+    @model_validator(mode="after")
+    def valid_time_window(self) -> TripOptionsInput:
+        for name, value in (
+            ("departure_at", self.departure_at),
+            ("arrival_before", self.arrival_before),
+        ):
+            if value is not None and value.utcoffset() is None:
+                raise ValueError(f"{name} must include a UTC offset")
+        if (
+            self.departure_at is not None
+            and self.arrival_before is not None
+            and self.arrival_before <= self.departure_at
+        ):
+            raise ValueError("arrival_before must be after departure_at")
+        return self
 
 
 class ParkingOptionsInput(StrictModel):
@@ -94,15 +112,30 @@ class AccessibilityCheckInput(StrictModel):
     origin: PlaceRef | None = None
     destination: PlaceRef | None = None
     stops: list[PlaceRef] | None = Field(default=None, max_length=20)
-    needs: list[str] | None = Field(default=None, max_length=10)
+    needs: list[Literal["wheelchair", "step_free"]] | None = Field(
+        default=None, min_length=1, max_length=2
+    )
+
+    @model_validator(mode="after")
+    def at_least_one_place(self) -> AccessibilityCheckInput:
+        if self.origin is None and self.destination is None and not self.stops:
+            raise ValueError("origin, destination, or stops is required")
+        return self
 
 
 class NearbyFacilitiesInput(StrictModel):
     location: PlaceRef
-    categories: list[str] = Field(max_length=20)
+    categories: list[FacilityCategory] = Field(min_length=1, max_length=7)
     radius_m: int = Field(default=1000, ge=50, le=5000)
     open_at: datetime | None = None
     limit_per_category: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("open_at")
+    @classmethod
+    def open_at_has_offset(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("open_at must include a UTC offset")
+        return value
 
 
 class EnvironmentBriefInput(StrictModel):
@@ -114,10 +147,17 @@ class EnvironmentBriefInput(StrictModel):
 class WasteDropoffInput(StrictModel):
     item: str = Field(min_length=1, max_length=200)
     location: PlaceRef | None = None
-    transport: str = Field(default="car", max_length=20)
+    transport: Literal["car"] = "car"
     open_at: datetime | None = None
     radius_m: int = Field(default=15000, ge=100, le=50000)
     limit: int = Field(default=10, ge=1, le=20)
+
+    @field_validator("open_at")
+    @classmethod
+    def open_at_has_offset(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("open_at must include a UTC offset")
+        return value
 
 
 class PersonalBriefingInput(StrictModel):
@@ -220,7 +260,7 @@ async def dispatch_tool(app: Any, name: str, arguments: dict[str, Any]) -> dict[
         if name == "lyon_resolve_place":
             p = payload
             assert isinstance(p, ResolvePlaceInput)
-            place = PlaceRef(query=p.query) if p.query else None
+            place = PlaceRef(query=p.query)
             result = await app.places.resolve_place(
                 query=p.query, place=place, near=p.near, types=p.types, limit=p.limit
             )
@@ -243,7 +283,7 @@ async def dispatch_tool(app: Any, name: str, arguments: dict[str, Any]) -> dict[
                 destination=p.destination,
                 departure_at=p.departure_at,
                 arrival_before=p.arrival_before,
-                modes=p.modes,
+                modes=[mode.value for mode in p.modes] if p.modes is not None else None,
                 preferences=prefs,
             )
         elif name == "lyon_parking_options":
@@ -267,7 +307,7 @@ async def dispatch_tool(app: Any, name: str, arguments: dict[str, Any]) -> dict[
             assert isinstance(p, NearbyFacilitiesInput)
             result = await app.facilities.nearby(
                 location=p.location,
-                categories=p.categories,
+                categories=[category.value for category in p.categories],
                 radius_m=p.radius_m,
                 open_at=p.open_at,
                 limit_per_category=p.limit_per_category,

@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 from grand_lyon_mcp.domain.accessibility import AccessibilityStatus
-from grand_lyon_mcp.domain.common import Envelope, PlaceRef, ResultStatus, make_envelope
+from grand_lyon_mcp.domain.common import (
+    Envelope,
+    PlaceRef,
+    ResultStatus,
+    WarningCode,
+    WarningItem,
+    make_envelope,
+)
 from grand_lyon_mcp.domain.geo import normalize_name
 from grand_lyon_mcp.domain.protocols import AccessibilityProvider, WheelchairProvider
 from grand_lyon_mcp.infrastructure.time import now_paris
@@ -33,15 +40,55 @@ class AccessibilityService:
         needs: list[str] | None = None,
     ) -> Envelope:
         generated = now_paris()
+        requested_needs = needs or ["wheelchair"]
+        supported_needs = {"wheelchair", "step_free"}
+        unsupported_needs = sorted(set(requested_needs) - supported_needs)
+        if unsupported_needs:
+            return make_envelope(
+                status=ResultStatus.INVALID_REQUEST,
+                generated_at=generated,
+                summary=f"Unsupported accessibility needs: {', '.join(unsupported_needs)}.",
+                data={
+                    "overall_status": AccessibilityStatus.UNKNOWN.value,
+                    "segments": [],
+                    "incidents": [],
+                    "unknowns": [],
+                    "requested_needs": requested_needs,
+                },
+            )
         unknowns: list[str] = []
         segments: list[dict[str, Any]] = []
         incidents: list[dict[str, Any]] = []
+        warnings: list[WarningItem] = []
 
         refs = list(stops or [])
         if origin:
             refs.append(origin)
         if destination:
             refs.append(destination)
+        if not refs:
+            return make_envelope(
+                status=ResultStatus.INVALID_REQUEST,
+                generated_at=generated,
+                summary="origin, destination, or stops is required.",
+                data={
+                    "overall_status": AccessibilityStatus.UNKNOWN.value,
+                    "segments": [],
+                    "incidents": [],
+                    "unknowns": [],
+                    "requested_needs": requested_needs,
+                },
+            )
+
+        if "step_free" in requested_needs:
+            warnings.append(
+                WarningItem(
+                    code=WarningCode.PARTIAL_RESULT.value,
+                    source="accessibility",
+                    message="Available sources do not verify the complete step-free path.",
+                    retryable=False,
+                )
+            )
 
         if self._provider is None and self._gtfs is None:
             for ref in refs:
@@ -65,7 +112,9 @@ class AccessibilityService:
                     "segments": segments,
                     "incidents": [],
                     "unknowns": unknowns,
+                    "requested_needs": requested_needs,
                 },
+                warnings=warnings,
                 degraded=True,
             )
 
@@ -222,9 +271,11 @@ class AccessibilityService:
         overall = _aggregate(statuses)
         summary = _summary_fr(overall, statuses, incidents)
         return make_envelope(
-            status=ResultStatus.OK
-            if overall != AccessibilityStatus.UNKNOWN
-            else ResultStatus.PARTIAL,
+            status=(
+                ResultStatus.OK
+                if overall != AccessibilityStatus.UNKNOWN and not warnings
+                else ResultStatus.PARTIAL
+            ),
             generated_at=generated,
             summary=summary,
             data={
@@ -232,8 +283,10 @@ class AccessibilityService:
                 "segments": segments,
                 "incidents": incidents,
                 "unknowns": unknowns,
+                "requested_needs": requested_needs,
             },
-            degraded=overall == AccessibilityStatus.UNKNOWN,
+            warnings=warnings,
+            degraded=overall == AccessibilityStatus.UNKNOWN or bool(warnings),
         )
 
 

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ThomasCrouzet/mcp-grand-lyon/actions/workflows/ci.yml/badge.svg)](https://github.com/ThomasCrouzet/mcp-grand-lyon/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14%20%7C%203.15-blue.svg)](pyproject.toml)
 
 A local MCP server for **Métropole de Lyon open data**. Ten read-only tools
 provide TCL departures, parking, accessibility, facilities, waste, travel
@@ -14,10 +14,23 @@ The server uses **stdio**. Application logs go to stderr. Tool summaries are in
 French. It runs with local fixtures when offline mode is enabled or DataGrandLyon
 credentials are absent.
 
+## Install a release
+
+Requirements: Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv tool install grand-lyon-mcp
+grand-lyon-mcp setup --yes --offline
+grand-lyon-mcp client-config
+```
+
+Setup enables the packaged demonstration fixtures and migrates the local database.
+See [MCP clients](docs/mcp-clients.md) for live credentials and other clients.
+
 ## Install from source
 
 Requirements: Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
-CI checks Python 3.12 and 3.13. A DataGrandLyon account is optional.
+CI checks Python 3.12 through 3.15. A DataGrandLyon account is optional.
 
 ```bash
 git clone https://github.com/ThomasCrouzet/mcp-grand-lyon.git

@@ -32,8 +32,8 @@ also satisfy this project's network allowlist.
 
 Runtime dependencies are listed in `pyproject.toml`; exact versions are in
 `uv.lock`. They include MCP, HTTPX, Pydantic, aiosqlite, PyYAML, Typer, Tenacity,
-platformdirs, RapidFuzz, Shapely, pyproj, and python-dateutil.
+platformdirs, RapidFuzz, pyproj, and python-dateutil.
 
 Check the installed distributions for their license texts and bundled-library
-notices. Shapely wheels can include GEOS (LGPL-2.1), and pyproj wheels can include
-PROJ. A package's own license does not replace its bundled-library obligations.
+notices. The pyproj wheels can include PROJ. A package's own license does not replace
+its bundled-library obligations.
