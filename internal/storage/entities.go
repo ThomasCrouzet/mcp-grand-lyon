@@ -102,6 +102,32 @@ func (s *Store) GetEntity(ctx context.Context, id string) (*model.PlaceCandidate
 	return scanCandidate(s.DB.QueryRowContext(ctx, `SELECT logical_id,name,entity_type,latitude,longitude FROM entities WHERE logical_id=?`, id))
 }
 
+// SaveResolvedPlace stores a normalized external place candidate so its logical
+// ID stays resolvable across tool calls and restarts. It deliberately does not
+// rebuild search indexes: the candidate came from the provider search that just
+// returned it, and place-ID lookup only needs the entity row.
+func (s *Store) SaveResolvedPlace(ctx context.Context, entity model.PlaceCandidate, sourceID, providerID string, properties map[string]any) error {
+	if entity.ID == "" || entity.Name == "" {
+		return fmt.Errorf("entity ID and name are required")
+	}
+	if !validCoordinates(entity.Latitude, entity.Longitude) {
+		return fmt.Errorf("entity coordinates are invalid")
+	}
+	payload, err := json.Marshal(properties)
+	if err != nil {
+		return fmt.Errorf("encode entity properties: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO entities
+		(logical_id,source_id,provider_id,entity_type,name,normalized_name,latitude,longitude,properties_json,indexed_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(logical_id) DO UPDATE SET
+		source_id=excluded.source_id,provider_id=excluded.provider_id,entity_type=excluded.entity_type,
+		name=excluded.name,normalized_name=excluded.normalized_name,latitude=excluded.latitude,
+		longitude=excluded.longitude,properties_json=excluded.properties_json,indexed_at=excluded.indexed_at`,
+		entity.ID, sourceID, providerID, entity.Type, entity.Name, model.Normalize(entity.Name),
+		entity.Latitude, entity.Longitude, string(payload), time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+
 func (s *Store) HasTransitIndex(ctx context.Context) (bool, error) {
 	var present bool
 	err := s.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM entities WHERE entity_type='transport_stop')").Scan(&present)

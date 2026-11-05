@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"math"
@@ -53,8 +55,18 @@ func ParsePhoton(payload any) ([]model.PlaceCandidate, error) {
 			label += ", " + locality
 		}
 		identifier := providerJSONText(providerJSONFirst(properties, "osm_id", "osm_value"))
+		objectType := providerJSONText(providerJSONFirst(properties, "osm_type"))
 		if identifier == "" {
-			identifier = name
+			identifier = providerJSONText(providerJSONFirst(properties, "name"))
+			if identifier == "" {
+				identifier = "unknown"
+			}
+			// Without an upstream object ID, coordinates and type keep distinct
+			// objects with the same display name from sharing one logical ID.
+			digest := sha256.Sum256([]byte(identifier + "|" + objectType + "|" + strconv.FormatFloat(latitude, 'f', 6, 64) + "|" + strconv.FormatFloat(longitude, 'f', 6, 64)))
+			identifier = hex.EncodeToString(digest[:8])
+		} else if objectType != "" {
+			identifier = objectType + ":" + identifier
 		}
 		confidence := 0.7
 		if value, ok := providerJSONFloat(providerJSONFirst(properties, "confidence")); ok {

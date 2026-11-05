@@ -8,6 +8,45 @@ import (
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/model"
 )
 
+func TestSaveResolvedPlaceKeepsReusableIdentity(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	entity := model.PlaceCandidate{
+		ID: "photon:node:9001", Name: "Twin", Label: "Twin, Lyon", Type: "point_of_interest",
+		Latitude: 45.75, Longitude: 4.85, Confidence: 0.9,
+	}
+	if err := store.SaveResolvedPlace(ctx, entity, "photon", entity.ID, map[string]any{"label": entity.Label}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetEntity(ctx, entity.ID)
+	if err != nil || got == nil || got.Latitude != entity.Latitude || got.Longitude != entity.Longitude {
+		t.Fatalf("GetEntity = %#v, %v", got, err)
+	}
+
+	entity.Name = "Twin renamed"
+	entity.Latitude = 45.76
+	if err := store.SaveResolvedPlace(ctx, entity, "photon", entity.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.GetEntity(ctx, entity.ID)
+	if err != nil || got == nil || got.Name != "Twin renamed" || got.Latitude != 45.76 {
+		t.Fatalf("upserted entity = %#v, %v", got, err)
+	}
+
+	if err := store.SaveResolvedPlace(ctx, model.PlaceCandidate{Name: "missing ID"}, "photon", "", nil); err == nil {
+		t.Fatal("placeholder identity was accepted")
+	}
+	if err := store.SaveResolvedPlace(ctx, model.PlaceCandidate{ID: "photon:bad", Name: "bad", Latitude: 999}, "photon", "", nil); err == nil {
+		t.Fatal("invalid coordinates were accepted")
+	}
+}
+
 func TestEntityIndexHandlesLiteralFTSInputAndRadius(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
