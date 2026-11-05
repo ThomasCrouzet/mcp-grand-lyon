@@ -393,7 +393,7 @@ func briefingItems(section string, value any) map[string]map[string]any {
 		case "velov":
 			key = briefingStringValue(value["id"])
 		case "journey":
-			key = briefingStringValue(value["mode"])
+			key = briefingStringValue(value["mode"]) + "|" + briefingStringValue(value["summary"])
 		case "mobility":
 			key = briefingStringValue(value["id"])
 		case "environment":
