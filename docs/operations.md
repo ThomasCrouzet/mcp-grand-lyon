@@ -208,6 +208,8 @@ It does not prove live upstream availability.
 Fixture mode is used only when offline is explicitly configured; a live installation with missing credentials keeps public sources available and marks credential-dependent sources `CREDENTIALS_MISSING`.
 `doctor` exits `0` for a usable explicit offline installation and `3` when live mode lacks DataGrandLyon credentials.
 A `CONFIGURED` source is resolved configuration, not proof of current availability; use the bounded live diagnostic for that.
+Observed source states distinguish `AUTH_FAILED`, `PERMISSION_DENIED`, `UNAVAILABLE`, `MALFORMED`, `STALE_DATA`, and `VERIFIED` when a health observation exists.
+`doctor.gtfs` reports import identity plus `missing`, `current`, `expired`, `future_only`, or `covered_no_service` coverage for the checked date, including calendar exceptions. Imported row counts alone never imply current coverage.
 It also reports safe source registry fields.
 These fields are `source_id`, `enabled`, `status`, `service`, and `table_name`.
 They do not contain persistent source-health history.

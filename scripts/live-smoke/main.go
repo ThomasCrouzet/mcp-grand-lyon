@@ -224,6 +224,15 @@ func run() (exitCode int) {
 		result.Commands = append(result.Commands, gtfsCommand)
 		gtfsCheck := assessGTFS(gtfs, syncErr)
 		result.Checks = append(result.Checks, gtfsCheck)
+		if syncErr == nil {
+			coverageDoctor, coverageCommand, coverageErr := runJSONCommand(ctx, result.Binary.Path, runtimeDir, childEnv, "doctor")
+			result.Commands = append(result.Commands, coverageCommand)
+			coverageCheck := assessGTFSCoverage(coverageDoctor, coverageErr)
+			result.Checks = append(result.Checks, coverageCheck)
+			if coverageErr != nil {
+				return fail(&result, secrets, coverageErr)
+			}
+		}
 	}
 
 	client, err := startMCP(ctx, result.Binary.Path, runtimeDir, childEnv, &result.Protocol)
@@ -759,6 +768,39 @@ func assessGTFS(output map[string]any, runErr error) checkEvidence {
 	check.State = verifiedState
 	check.Count = int(stops)
 	check.Detail = fmt.Sprintf("%d stop entities indexed", int(indexed))
+	return check
+}
+
+func assessGTFSCoverage(doctor map[string]any, runErr error) checkEvidence {
+	check := checkEvidence{Name: "gtfs_coverage"}
+	if runErr != nil {
+		check.State = failedState
+		check.Detail = runErr.Error()
+		return check
+	}
+	gtfs, _ := doctor["gtfs"].(map[string]any)
+	status, _ := gtfs["status"].(string)
+	checked, _ := gtfs["checked_date"].(string)
+	switch status {
+	case "current":
+		check.State = verifiedState
+		check.Detail = fmt.Sprintf("timetable covers %s", checked)
+	case "missing":
+		check.State = unavailableState
+		check.Detail = "no GTFS timetable is imported"
+	case "expired":
+		check.State = notVerifiedState
+		check.Detail = fmt.Sprintf("imported timetable expired before %s", checked)
+	case "future_only":
+		check.State = notVerifiedState
+		check.Detail = fmt.Sprintf("imported timetable starts after %s", checked)
+	case "covered_no_service":
+		check.State = notVerifiedState
+		check.Detail = fmt.Sprintf("calendar covers %s but has no service that day", checked)
+	default:
+		check.State = failedState
+		check.Detail = fmt.Sprintf("unknown GTFS coverage status %q", status)
+	}
 	return check
 }
 
