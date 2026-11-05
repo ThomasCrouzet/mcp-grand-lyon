@@ -4,6 +4,8 @@ package cli
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -480,10 +482,15 @@ func runSync(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	case "gtfs":
 		flags := newFlagSet("sync gtfs", stderr)
 		fromFile := flags.String("from-file", "", "import a local GTFS archive")
+		maintain := flags.Bool("maintain", false, "run bounded maintenance and skip an unchanged archive")
+		date := flags.String("date", "", "service date to check (YYYY-MM-DD)")
 		if err := parseFlags(flags, args[1:]); err != nil {
 			return err
 		}
 		return withApp(ctx, func(cfg config.Config, app *service.App) error {
+			if *maintain {
+				return maintainGTFS(ctx, cfg, app, *fromFile, *date, stdout)
+			}
 			path := *fromFile
 			if path == "" && cfg.Offline {
 				return writeJSON(stdout, map[string]any{
@@ -515,6 +522,120 @@ func runSync(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	default:
 		return usageError("unknown sync command %q", args[0])
 	}
+}
+
+func maintainGTFS(ctx context.Context, cfg config.Config, app *service.App, fromFile, date string, stdout io.Writer) error {
+	checkDate := model.Now()
+	if date != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", date, model.Paris)
+		if err != nil {
+			return usageError("--date must use YYYY-MM-DD")
+		}
+		checkDate = parsed
+	}
+	coverageBefore, err := app.Store.GTFSCoverage(ctx, checkDate)
+	if err != nil {
+		return err
+	}
+	active, err := app.Store.ActiveGTFSImport(ctx)
+	if err != nil {
+		return err
+	}
+	path := fromFile
+	downloaded := false
+	if path == "" {
+		if cfg.Offline {
+			return writeJSON(stdout, map[string]any{
+				"status": "DISABLED", "reason": "offline and no --from-file",
+				"coverage": coverageBefore,
+			})
+		}
+		directory := filepath.Join(cfg.DataDir, "gtfs")
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return fmt.Errorf("create GTFS data directory: %w", err)
+		}
+		temporary, err := os.CreateTemp(directory, ".gtfs-maintenance-*")
+		if err != nil {
+			return fmt.Errorf("create GTFS maintenance file: %w", err)
+		}
+		path = temporary.Name()
+		if err := temporary.Close(); err != nil {
+			return err
+		}
+		defer os.Remove(path)
+		response, err := app.HTTP.Download(ctx, gtfsURL, path, true, gtfsMaxBytes)
+		if err != nil {
+			return err
+		}
+		if response.StatusCode != http.StatusOK {
+			return fmt.Errorf("GTFS download returned HTTP %d", response.StatusCode)
+		}
+		downloaded = true
+	}
+	hash, err := fileSHA256(path)
+	if err != nil {
+		return err
+	}
+	if active != nil && active["file_hash"] == hash {
+		output := map[string]any{
+			"status": "UNCHANGED", "unchanged": true, "archive_sha256": hash,
+			"active_import": active, "coverage": coverageBefore,
+		}
+		if err := writeJSON(stdout, output); err != nil {
+			return err
+		}
+		return maintenanceExit(coverageBefore)
+	}
+	if downloaded {
+		canonical := filepath.Join(cfg.DataDir, "gtfs", "GTFS_TCL.ZIP")
+		if err := os.Rename(path, canonical); err != nil {
+			return fmt.Errorf("publish GTFS archive: %w", err)
+		}
+		path = canonical
+	}
+	counts, err := app.Store.ImportGTFS(ctx, path)
+	if err != nil {
+		return fmt.Errorf("import GTFS archive: %w", err)
+	}
+	coverageAfter, err := app.Store.GTFSCoverage(ctx, checkDate)
+	if err != nil {
+		return err
+	}
+	newActive, err := app.Store.ActiveGTFSImport(ctx)
+	if err != nil {
+		return err
+	}
+	output := map[string]any{
+		"status": "OK", "unchanged": false, "counts": counts,
+		"entities_indexed": counts["entities_indexed"], "archive_sha256": hash,
+		"active_import": newActive, "coverage_before": coverageBefore, "coverage": coverageAfter,
+	}
+	if err := writeJSON(stdout, output); err != nil {
+		return err
+	}
+	return maintenanceExit(coverageAfter)
+}
+
+func maintenanceExit(coverage map[string]any) error {
+	switch coverage["status"] {
+	case "current", "covered_no_service":
+		return nil
+	default:
+		return commandError{code: 3, err: fmt.Errorf("GTFS coverage is %v; the timetable is imported but does not cover the checked date", coverage["status"])}
+	}
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open GTFS archive: %w", err)
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("hash GTFS archive: %w", err)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 type catalogProvider interface {

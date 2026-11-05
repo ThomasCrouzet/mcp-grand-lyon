@@ -184,6 +184,35 @@ Its result includes an `entities_indexed` count.
 A failed import keeps the prior timetable and entity index.
 GTFS results always use `realtime=false`.
 
+Run bounded maintenance manually or from a local scheduler:
+
+```bash
+grand-lyon-mcp sync gtfs --maintain
+grand-lyon-mcp sync gtfs --maintain --from-file /absolute/path/to/GTFS_TCL.ZIP
+grand-lyon-mcp sync gtfs --maintain --date 2026-07-20
+```
+
+Maintenance reports the active import, archive hash, counts, and GTFS coverage
+before and after the refresh.
+An unchanged archive returns `UNCHANGED` without replacing the timetable.
+A failed download, invalid archive, cancellation, or import failure keeps the
+previous valid timetable and stop index.
+Exit code `0` means the archive was accepted and covers the checked date (or the
+calendar covers the date with no service); exit code `3` means it was imported but
+coverage is missing, expired, or future-only; exit code `1` means the refresh
+failed.
+Offline mode never downloads; `--from-file` still imports a local archive.
+
+Opt-in scheduling on Linux/macOS, for example a daily cron entry:
+
+```cron
+15 04 * * * /absolute/path/grand-lyon-mcp sync gtfs --maintain >>/var/log/grand-lyon-mcp-gtfs.log 2>&1
+```
+
+On Windows, schedule the same command in Task Scheduler.
+The application never installs or enables a scheduler implicitly.
+Disable the scheduled entry to stop maintenance.
+
 Capture one Vélo'v reliability snapshot:
 
 ```bash

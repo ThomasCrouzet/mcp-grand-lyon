@@ -16,6 +16,21 @@ type GTFSImportInfo struct {
 	Status     string
 }
 
+// ActiveGTFSImport returns the latest successful import identity, or nil.
+func (s *Store) ActiveGTFSImport(ctx context.Context) (map[string]any, error) {
+	var id int64
+	var sourceURL, importedAt, fileHash, status string
+	err := s.DB.QueryRowContext(ctx, `SELECT id,COALESCE(source_url,''),imported_at,COALESCE(file_hash,''),status
+		FROM gtfs_imports WHERE status='ok' ORDER BY id DESC LIMIT 1`).Scan(&id, &sourceURL, &importedAt, &fileHash, &status)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": id, "source_url": sourceURL, "imported_at": importedAt, "file_hash": fileHash, "status": status}, nil
+}
+
 // GTFSCoverage reports whether the imported theoretical timetable covers a date,
 // including calendar start/end bounds and date exceptions.
 func (s *Store) GTFSCoverage(ctx context.Context, date time.Time) (map[string]any, error) {
