@@ -73,6 +73,24 @@ jobs:
           GLMCP_BINARY: ${{ runner.temp }}/bin/grand-lyon-mcp
         run: go test -count=1 ./tests/e2e
 
+  race-acceptance:
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Run concurrent checks against a race-instrumented server
+        env:
+          GLMCP_ARTIFACT_DIR: ${{ runner.temp }}/race-server-evidence
+        run: make race-acceptance
+
   gitleaks:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

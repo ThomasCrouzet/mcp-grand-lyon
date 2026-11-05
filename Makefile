@@ -11,7 +11,7 @@ COVERAGE_PACKAGES := ./internal/...
 COVERAGE_MINIMUM := 85.0
 # Exclude CLI, MCP SDK, and live provider boundaries from the coverage gate.
 
-.PHONY: help format format-check vet lint test vulnerability quality build run release clean
+.PHONY: help format format-check vet lint test race-acceptance vulnerability quality build run release clean
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*##"; printf "\ngrand-lyon-mcp commands\n\n"} \
@@ -73,6 +73,20 @@ test: ## Run all tests with the race detector and retain local evidence.
 	awk -v coverage="$$coverage" 'BEGIN { exit !(coverage >= $(COVERAGE_MINIMUM)) }'; \
 	echo "Evidence: $$artifact_dir"; \
 	echo "Coverage data: $$coverage_dir"
+
+race-acceptance: ## Run concurrent MCP checks against a race-instrumented server.
+	@set -euo pipefail; \
+	if [ -n "$${GLMCP_ARTIFACT_DIR:-}" ]; then \
+		artifact_dir="$$GLMCP_ARTIFACT_DIR"; \
+	else \
+		run_root="$$(mktemp -d /tmp/grand-lyon-mcp-race.XXXXXX)"; \
+		artifact_dir="$$run_root/evidence"; \
+	fi; \
+	test ! -e "$$artifact_dir"; \
+	mkdir -p "$$artifact_dir"; \
+	CGO_ENABLED=1 GLMCP_RACE_BINARY=1 GLMCP_ARTIFACT_DIR="$$artifact_dir" \
+		$(GO) test -race -count=1 ./tests/e2e -run TestRaceServerAcceptance; \
+	echo "Evidence: $$artifact_dir"
 
 vulnerability: ## Check dependencies against the Go vulnerability database.
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...

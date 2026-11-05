@@ -27,6 +27,7 @@ const (
 	databaseEnv = "GRAND_LYON_MCP_DB_PATH"
 	fixturesEnv = "GRAND_LYON_MCP_FIXTURES_DIR"
 	offlineEnv  = "GRAND_LYON_MCP_OFFLINE"
+	raceEnv     = "GLMCP_RACE_BINARY"
 )
 
 var acceptanceCaseNames = []string{
@@ -76,9 +77,10 @@ type evidenceReport struct {
 }
 
 type binaryEvidence struct {
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
-	Size   int64  `json:"size"`
+	Path             string `json:"path"`
+	SHA256           string `json:"sha256"`
+	Size             int64  `json:"size"`
+	RaceInstrumented bool   `json:"race_instrumented"`
 }
 
 type sourceEvidence struct {
@@ -144,6 +146,9 @@ func TestMain(m *testing.M) {
 
 	if h.buildBinary {
 		arguments := []string{"go", "build"}
+		if os.Getenv(raceEnv) == "1" {
+			arguments = append(arguments, "-race")
+		}
 		if h.coverageDir != "" {
 			arguments = append(arguments, "-cover", "-coverpkg=github.com/ThomasCrouzet/mcp-grand-lyon/...")
 		}
@@ -256,7 +261,7 @@ func (h *harness) captureBinary() error {
 	if err != nil {
 		return fmt.Errorf("hash tested binary: %w", err)
 	}
-	h.report.Binary = binaryEvidence{Path: h.binary, SHA256: digest, Size: info.Size()}
+	h.report.Binary = binaryEvidence{Path: h.binary, SHA256: digest, Size: info.Size(), RaceInstrumented: os.Getenv(raceEnv) == "1"}
 	return nil
 }
 
