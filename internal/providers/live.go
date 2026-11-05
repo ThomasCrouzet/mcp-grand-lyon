@@ -1034,6 +1034,10 @@ func optionalInteger(row map[string]any, keys ...string) *int {
 	var parsed int
 	var err error
 	switch typed := value.(type) {
+	case int:
+		parsed = typed
+	case int64:
+		parsed = int(typed)
 	case float64:
 		parsed = int(typed)
 	case json.Number:

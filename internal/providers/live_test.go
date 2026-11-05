@@ -759,7 +759,15 @@ func TestTransitousRespectsFeatureFlagAndMapsItinerary(t *testing.T) {
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requests.Add(1)
 		writeJSON(t, writer, map[string]any{"itineraries": []any{
-			map[string]any{"duration": 900, "summary": "Metro A"},
+			map[string]any{
+				"duration": 900, "summary": "Metro A",
+				"startTime": "2026-07-20T08:00:00+02:00", "endTime": "2026-07-20T08:15:00+02:00",
+				"legs": []any{map[string]any{
+					"mode": "SUBWAY", "routeShortName": "A", "agencyName": "SYTRAL Mobilités",
+					"startTime": "2026-07-20T08:00:00+02:00", "endTime": "2026-07-20T08:15:00+02:00",
+					"realTime": true,
+				}},
+			},
 		}})
 	})
 	disabled := testLive(t, handler, nil)
@@ -771,6 +779,13 @@ func TestTransitousRespectsFeatureFlagAndMapsItinerary(t *testing.T) {
 	options, err = enabled.Plan(context.Background(), model.Point{Latitude: 45.76, Longitude: 4.85}, model.Point{Latitude: 45.75, Longitude: 4.83}, time.Now(), []string{"tcl"}, model.TripPreferences{})
 	if err != nil || len(options) != 1 || options[0].EstimatedDurationSeconds == nil || *options[0].EstimatedDurationSeconds != 900 {
 		t.Fatalf("enabled = (%#v, %v)", options, err)
+	}
+	if options[0].DepartureAt.Format(time.RFC3339) != "2026-07-20T08:00:00+02:00" ||
+		options[0].ArrivalAt.Format(time.RFC3339) != "2026-07-20T08:15:00+02:00" {
+		t.Fatalf("itinerary times = %v -> %v", options[0].DepartureAt, options[0].ArrivalAt)
+	}
+	if len(options[0].Legs) != 1 || options[0].Legs[0].Line != "A" || !options[0].Realtime {
+		t.Fatalf("itinerary evidence = %#v", options[0])
 	}
 }
 

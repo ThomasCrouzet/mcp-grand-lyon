@@ -365,6 +365,13 @@ func (app *App) appendTransitOptions(ctx context.Context, envelope *model.Envelo
 			if option.Summary == "" {
 				option.Summary = "TCL duration is unavailable."
 			}
+		} else {
+			walking := model.Value(option.WalkingDistanceM)
+			disruptions := 0.0
+			if len(option.Alerts) != 0 {
+				disruptions = 1
+			}
+			option.Score = app.tripScore(*option.EstimatedDurationSeconds, 0.85, disruptions, walking, 0.5)
 		}
 		if option.Alerts == nil {
 			option.Alerts = []model.TransitAlert{}
