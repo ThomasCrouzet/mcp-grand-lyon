@@ -831,14 +831,7 @@ func assertToolList(t *testing.T, client *mcpProcess) {
 
 func (client *mcpProcess) callTool(name string, arguments map[string]any) map[string]any {
 	client.t.Helper()
-	raw := client.request("tools/call", map[string]any{"name": name, "arguments": arguments})
-	var call toolCallResult
-	if err := json.Unmarshal(raw, &call); err != nil {
-		client.t.Fatalf("decode %s result: %v", name, err)
-	}
-	if call.IsError {
-		client.t.Fatalf("%s returned protocol error content: %s", name, raw)
-	}
+	call := client.callToolResult(name, arguments)
 	envelope := call.StructuredContent
 	if envelope == nil && len(call.Content) > 0 {
 		text, _ := call.Content[0]["text"].(string)
@@ -849,7 +842,27 @@ func (client *mcpProcess) callTool(name string, arguments map[string]any) map[st
 	if envelope == nil || envelope["schema_version"] != "1.0" {
 		client.t.Fatalf("%s returned an invalid envelope: %#v", name, envelope)
 	}
+	assertExecutionStatus(client.t, name, call.IsError, envelope)
 	return envelope
+}
+
+func (client *mcpProcess) callToolResult(name string, arguments map[string]any) toolCallResult {
+	client.t.Helper()
+	raw := client.request("tools/call", map[string]any{"name": name, "arguments": arguments})
+	var call toolCallResult
+	if err := json.Unmarshal(raw, &call); err != nil {
+		client.t.Fatalf("decode %s result: %v", name, err)
+	}
+	return call
+}
+
+func assertExecutionStatus(t *testing.T, name string, isError bool, envelope map[string]any) {
+	t.Helper()
+	status, _ := envelope["status"].(string)
+	want := status == "invalid_request" || status == "unavailable"
+	if isError != want {
+		t.Fatalf("%s isError = %v for status %q, want %v; envelope=%#v", name, isError, status, want, envelope)
+	}
 }
 
 func (client *mcpProcess) request(method string, params any) json.RawMessage {
