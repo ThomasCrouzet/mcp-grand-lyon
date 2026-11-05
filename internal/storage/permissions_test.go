@@ -120,6 +120,33 @@ func TestInspectStorageReportsUnsafePaths(t *testing.T) {
 		if report := InspectStorage(data, db); report["ok"] != false {
 			t.Fatalf("symbolic-link database reported healthy: %#v", report)
 		}
+		if err := os.Remove(data); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(root, data); err != nil {
+			t.Fatal(err)
+		}
+		if report := InspectStorage(data, db); report["ok"] != false {
+			t.Fatalf("symbolic-link data directory reported healthy: %#v", report)
+		}
+	}
+	if err := os.RemoveAll(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(data, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if report := InspectStorage(data, db); report["ok"] != false {
+		t.Fatalf("regular-file data directory reported healthy: %#v", report)
+	}
+	if err := os.Remove(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(db, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if report := InspectStorage(root, db); report["ok"] != false {
+		t.Fatalf("directory database reported healthy: %#v", report)
 	}
 }
 
@@ -218,5 +245,74 @@ func TestOwnedByCurrentUserHandlesForeignStat(t *testing.T) {
 	}
 	if !ownedByCurrentUser(info) {
 		t.Fatal("temporary directory should be owned by the current user")
+	}
+	if !ownedByCurrentUser(fakeFileInfo{FileInfo: info}) {
+		t.Fatal("an unknown stat representation should not be treated as foreign")
+	}
+}
+
+type fakeFileInfo struct{ os.FileInfo }
+
+func (fakeFileInfo) Sys() any { return nil }
+
+func TestStoragePermissionErrors(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission denial is not portable to Windows")
+	}
+	root := t.TempDir()
+
+	readOnly := filepath.Join(root, "read-only")
+	if err := os.Mkdir(readOnly, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(context.Background(), filepath.Join(readOnly, "app.db")); err == nil {
+		t.Fatal("Open succeeded below a read-only parent")
+	}
+	if err := EnsureDataDirectory(filepath.Join(readOnly, "data")); err == nil {
+		t.Fatal("EnsureDataDirectory succeeded below a read-only parent")
+	}
+	if _, err := SecureStorage(filepath.Join(readOnly, "data"), filepath.Join(readOnly, "app.db")); err == nil {
+		t.Fatal("SecureStorage succeeded below a read-only parent")
+	}
+
+	noAccess := filepath.Join(root, "no-access")
+	if err := os.Mkdir(noAccess, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(noAccess, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(noAccess, 0o700) })
+	if _, err := Open(context.Background(), filepath.Join(noAccess, "app.db")); err == nil {
+		t.Fatal("Open succeeded inside an untraversable directory")
+	}
+	if err := EnsureDataDirectory(filepath.Join(noAccess, "data")); err == nil {
+		t.Fatal("EnsureDataDirectory succeeded inside an untraversable directory")
+	}
+	if err := validatePrivateDatabase(filepath.Join(noAccess, "app.db")); err == nil {
+		t.Fatal("validatePrivateDatabase succeeded inside an untraversable directory")
+	}
+	if _, err := SecureStorage(filepath.Join(noAccess, "data"), filepath.Join(noAccess, "app.db")); err == nil {
+		t.Fatal("SecureStorage succeeded inside an untraversable directory")
+	}
+}
+
+func TestSecureStorageRejectsNonregularSidecar(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	data := filepath.Join(root, "data")
+	db := filepath.Join(root, "app.db")
+	if err := os.Mkdir(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(db, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(db+"-journal", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SecureStorage(data, db); err == nil {
+		t.Fatal("db secure accepted a directory sidecar")
 	}
 }
