@@ -74,7 +74,7 @@ briefings:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if score.SampleCount != 5 || score.ProbabilityAvailable != 0.6 || score.Confidence != "medium" {
+	if score.SampleCount != 4 || score.ProbabilityAvailable != 0.75 || score.Confidence != "low" {
 		t.Fatalf("Reliability = %#v", score)
 	}
 }

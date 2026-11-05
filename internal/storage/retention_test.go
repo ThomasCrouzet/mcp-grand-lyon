@@ -42,6 +42,97 @@ func TestCacheRetentionKeepsNewestRowsWithinBothLimits(t *testing.T) {
 	}
 }
 
+func TestHistoryRetentionAndScopedDeletion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	now := time.Now().UTC()
+	for index := 0; index < 4; index++ {
+		for _, profile := range []string{"keep", "other"} {
+			_, err := store.DB.ExecContext(ctx, `INSERT INTO briefing_snapshots(profile_key,captured_at,payload_json) VALUES (?,?,?)`,
+				profile, now.AddDate(0, 0, -index).Format(time.RFC3339Nano), `{"facts":{"value":1}}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for index := 0; index < 5; index++ {
+		_, err := store.DB.ExecContext(ctx, `INSERT INTO velov_snapshots(station_id,observed_at,bikes_available,docks_available,hour_slot) VALUES (?,?,?,?,?)`,
+			"station", now.AddDate(0, 0, -index).Format(time.RFC3339Nano), index, 5, "08")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	removed, err := store.PruneHistory(ctx, HistoryRetentionPolicy{BriefingMaxAgeDays: 2, BriefingMaxCount: 1, VelovMaxAgeDays: 2, VelovMaxCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed["briefing_age"] == 0 || removed["briefing_count"] == 0 || removed["velov_age"] == 0 || removed["velov_count"] == 0 {
+		t.Fatalf("retention result = %#v", removed)
+	}
+	info, err := store.HistoryInfo(ctx, HistoryRetentionPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info["briefing_snapshots"] != 2 || info["velov_snapshots"] != 1 {
+		t.Fatalf("history info = %#v", info)
+	}
+	if deleted, err := store.DeleteBriefingHistory(ctx, "keep"); err != nil || deleted != 1 {
+		t.Fatalf("DeleteBriefingHistory = %d, %v", deleted, err)
+	}
+	if deleted, err := store.DeleteVelovHistory(ctx, "station"); err != nil || deleted != 1 {
+		t.Fatalf("DeleteVelovHistory = %d, %v", deleted, err)
+	}
+	info, err = store.HistoryInfo(ctx, HistoryRetentionPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info["briefing_snapshots"] != 1 || info["velov_snapshots"] != 0 {
+		t.Fatalf("scoped deletion changed unrelated rows: %#v", info)
+	}
+}
+
+func TestSaveSnapshotDeduplicatesEquivalentFacts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := Open(ctx, filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	first := map[string]any{"facts": map[string]any{"value": 1, "generated_at": "2026-07-20T08:00:00Z"}}
+	second := map[string]any{"facts": map[string]any{"value": 1, "generated_at": "2026-07-20T09:00:00Z"}}
+	if err := store.SaveSnapshot(ctx, "profile", first); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSnapshot(ctx, "profile", second); err != nil {
+		t.Fatal(err)
+	}
+	info, err := store.HistoryInfo(ctx, HistoryRetentionPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info["briefing_snapshots"] != 1 {
+		t.Fatalf("equivalent facts created duplicate snapshots: %#v", info)
+	}
+	if err := store.SaveSnapshot(ctx, "profile", map[string]any{"facts": map[string]any{"value": 2}}); err != nil {
+		t.Fatal(err)
+	}
+	info, err = store.HistoryInfo(ctx, HistoryRetentionPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info["briefing_snapshots"] != 2 {
+		t.Fatalf("changed facts were not retained: %#v", info)
+	}
+}
+
 func TestSourceHealthRetentionUsesLatestEvent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

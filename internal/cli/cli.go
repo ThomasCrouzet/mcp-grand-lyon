@@ -87,6 +87,8 @@ func execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return runSetup(ctx, args[1:], stdout, stderr)
 	case "config":
 		return runConfig(args[1:], stdout, stderr)
+	case "history":
+		return runHistory(ctx, args[1:], stdout, stderr)
 	case "env":
 		return runEnvironment(args[1:], stdout, stderr)
 	case "client-config":
@@ -315,6 +317,13 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		if err != nil {
 			return err
 		}
+		history, err := app.Store.HistoryInfo(ctx, service.HistoryRetentionPolicy(cfg))
+		if err != nil {
+			return err
+		}
+		if stat, statErr := os.Stat(cfg.DBPath); statErr == nil {
+			history["db_size_bytes"] = stat.Size()
+		}
 		modeReason := "explicit offline mode"
 		if !cfg.Offline {
 			modeReason = "live mode requested"
@@ -335,6 +344,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 			"db_path":                  cfg.DBPath,
 			"database":                 info,
 			"storage":                  storage.InspectStorage(cfg.DataDir, cfg.DBPath),
+			"history":                  history,
 			"sources":                  sourceStatus,
 			"source_capabilities":      capabilities,
 			"transitous_enabled":       cfg.TransitousEnabled,
@@ -347,6 +357,72 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		}
 		return nil
 	})
+}
+
+func runHistory(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		return usageError("history requires info, prune, or delete")
+	}
+	switch args[0] {
+	case "info", "prune":
+		if err := requireNoArguments(args[1:]); err != nil {
+			return err
+		}
+		return withApp(ctx, func(cfg config.Config, app *service.App) error {
+			policy := service.HistoryRetentionPolicy(cfg)
+			if args[0] == "prune" {
+				removed, err := app.Store.PruneHistory(ctx, policy)
+				if err != nil {
+					return err
+				}
+				return writeJSON(stdout, map[string]any{"status": "OK", "removed": removed, "retention": policy})
+			}
+			info, err := app.Store.HistoryInfo(ctx, policy)
+			if err != nil {
+				return err
+			}
+			info["db_path"] = cfg.DBPath
+			if stat, statErr := os.Stat(cfg.DBPath); statErr == nil {
+				info["db_size_bytes"] = stat.Size()
+			}
+			return writeJSON(stdout, info)
+		})
+	case "delete":
+		flags := newFlagSet("history delete", stderr)
+		profile := flags.String("profile", "", "delete briefing history for one profile")
+		station := flags.String("station", "", "delete bicycle history for one station")
+		allVelov := flags.Bool("all-velov", false, "delete all bicycle history")
+		if err := parseFlags(flags, args[1:]); err != nil {
+			return err
+		}
+		if *profile == "" && *station == "" && !*allVelov {
+			return usageError("history delete requires --profile, --station, or --all-velov")
+		}
+		return withApp(ctx, func(_ config.Config, app *service.App) error {
+			result := map[string]any{"status": "OK", "briefing_deleted": 0, "velov_deleted": 0}
+			if *profile != "" {
+				deleted, err := app.Store.DeleteBriefingHistory(ctx, *profile)
+				if err != nil {
+					return err
+				}
+				result["briefing_deleted"] = deleted
+				result["profile"] = *profile
+			}
+			if *station != "" || *allVelov {
+				deleted, err := app.Store.DeleteVelovHistory(ctx, *station)
+				if err != nil {
+					return err
+				}
+				result["velov_deleted"] = deleted
+				if *station != "" {
+					result["station"] = *station
+				}
+			}
+			return writeJSON(stdout, result)
+		})
+	default:
+		return usageError("unknown history command %q", args[0])
+	}
 }
 
 func runDatabase(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -620,7 +696,7 @@ func smokePayloads() map[string]map[string]any {
 
 func writeHelp(output io.Writer) {
 	fmt.Fprintln(output, "Usage: grand-lyon-mcp <command> [options]")
-	fmt.Fprintln(output, "Commands: setup, config, env, client-config, doctor, db, sync, catalog, snapshot, smoke, serve, version")
+	fmt.Fprintln(output, "Commands: setup, config, env, client-config, doctor, db, history, sync, catalog, snapshot, smoke, serve, version")
 }
 
 func newFlagSet(name string, output io.Writer) *flag.FlagSet {
