@@ -16,6 +16,7 @@ func ParseSIRIDepartures(payload any) ([]model.Departure, error) {
 		return nil, errors.New("SIRI timetable root must be an object or array")
 	}
 	result := []model.Departure{}
+	observed := providerJSONTime(providerJSONDeepFirst(payload, "ResponseTimestamp", "responseTimestamp"))
 	for _, rawJourney := range providerJSONValues(payload, "EstimatedVehicleJourney") {
 		for _, journey := range providerJSONMaps(rawJourney) {
 			line := providerJSONText(providerJSONFirst(journey, "LineRef", "lineRef"))
@@ -54,6 +55,7 @@ func ParseSIRIDepartures(payload any) ([]model.Departure, error) {
 						Destination:  resolvedDestination,
 						ScheduledAt:  aimed,
 						ExpectedAt:   expected,
+						ObservedAt:   observed,
 						DelaySeconds: delay,
 						Realtime:     true,
 						Cancelled:    status == "cancelled" || status == "canceled",
@@ -106,6 +108,29 @@ func ParseSIRIAlerts(payload any) ([]model.TransitAlert, error) {
 		}
 	}
 	return result, nil
+}
+
+func providerJSONDeepFirst(value any, keys ...string) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, key := range keys {
+			if found, ok := typed[key]; ok && found != nil {
+				return found
+			}
+		}
+		for _, nested := range typed {
+			if found := providerJSONDeepFirst(nested, keys...); found != nil {
+				return found
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if found := providerJSONDeepFirst(nested, keys...); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
 }
 
 func providerSIRILines(affects any) []string {

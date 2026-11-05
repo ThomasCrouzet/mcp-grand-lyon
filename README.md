@@ -63,7 +63,7 @@ A successful MCP exchange can contain an unavailable domain result: inspect warn
 
 - **Input validation.** Schemas reject unknown fields and invalid values. A place reference uses exactly one of a query, place ID, coordinate pair, or profile-place name.
 - **Trip eligibility.** Only options whose evidence satisfies the walking, deadline, disruption, and accessibility constraints can be recommended. Missing itineraries and unknown walking distances stay visible as ineligible information with a reason.
-- **Data quality.** GTFS results are always theoretical. Missing parking occupancy stays `null`; zero means full. Missing accessibility evidence stays `unknown`.
+- **Data quality.** GTFS results are always theoretical. Missing parking occupancy stays `null`; zero means full. Missing accessibility evidence stays `unknown`. Observation time, retrieval time, and age stay separate: missing timestamps remain unknown, and stale or unobserved availability cannot support a recommendation.
 - **Local writes.** Tools do not change upstream data. Some queries save local briefing snapshots or Vélo'v observations, and startup applies pending SQLite migrations.
 
 Administrative tasks such as setup, GTFS imports, and catalogue discovery are CLI commands.

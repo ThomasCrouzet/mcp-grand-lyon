@@ -49,15 +49,16 @@ type Live struct {
 	store  *storage.Store
 	cfg    config.Config
 
-	velovMu         sync.Mutex
-	velov           []model.VelovStation
-	velovExpires    time.Time
-	parkingMu       sync.Mutex
-	parkingLive     map[string]int
-	parkingRows     []map[string]any
-	parkingObserved *time.Time
-	parkingExpires  time.Time
-	parkingErr      error
+	velovMu          sync.Mutex
+	velov            []model.VelovStation
+	velovExpires     time.Time
+	parkingMu        sync.Mutex
+	parkingLive      map[string]int
+	parkingRows      []map[string]any
+	parkingObserved  *time.Time
+	parkingRetrieved time.Time
+	parkingExpires   time.Time
+	parkingErr       error
 }
 
 func NewLive(client *httpclient.Client, store *storage.Store, cfg config.Config) *Live {
@@ -351,7 +352,8 @@ func mapPassageRows(rows []map[string]any, stopID string, stop *model.PlaceCandi
 			continue
 		}
 		expected := parseTime(first(row, "heurepassage", "expected"))
-		result = append(result, model.Departure{LineID: "tcl:" + lineName, LineName: lineName, Destination: destination, StopRef: optional(rowStop), ScheduledAt: expected, ExpectedAt: expected, DelaySeconds: parseDelay(first(row, "delaipassage")), Realtime: true})
+		observed := parseTime(first(row, "observed_at", "last_update", "last_updated", "updated_at", "timestamp"))
+		result = append(result, model.Departure{LineID: "tcl:" + lineName, LineName: lineName, Destination: destination, StopRef: optional(rowStop), ScheduledAt: expected, ExpectedAt: expected, ObservedAt: observed, DelaySeconds: parseDelay(first(row, "delaipassage")), Realtime: true})
 	}
 	return result
 }
@@ -498,6 +500,7 @@ func (live *Live) allVelov(ctx context.Context) ([]model.VelovStation, error) {
 	if err != nil {
 		return nil, err
 	}
+	retrieved := time.Now().In(model.Paris)
 	result := []model.VelovStation{}
 	for _, row := range rows {
 		latitude, latitudeOK := number(row, "lat", "latitude")
@@ -510,7 +513,7 @@ func (live *Live) allVelov(ctx context.Context) ([]model.VelovStation, error) {
 			status = "open"
 		}
 		observed := parseTime(first(row, "observed_at", "last_update", "last_update_fme", "last_update_gl", "last_updated", "updated_at", "lastupdate", "timestamp"))
-		result = append(result, model.VelovStation{ID: firstText(row, "", "number", "id", "name"), Name: firstText(row, "Vélo'v", "name"), Latitude: latitude, Longitude: longitude, BikesAvailable: integer(row, 0, "available_bikes", "bikes"), DocksAvailable: integer(row, 0, "available_bike_stands", "docks"), Capacity: integer(row, 0, "bike_stands", "capacity"), Status: status, ObservedAt: observed})
+		result = append(result, model.VelovStation{ID: firstText(row, "", "number", "id", "name"), Name: firstText(row, "Vélo'v", "name"), Latitude: latitude, Longitude: longitude, BikesAvailable: integer(row, 0, "available_bikes", "bikes"), DocksAvailable: integer(row, 0, "available_bike_stands", "docks"), Capacity: integer(row, 0, "bike_stands", "capacity"), Status: status, ObservedAt: observed, RetrievedAt: model.Ptr(retrieved)})
 	}
 	live.velov = result
 	live.velovExpires = time.Now().Add(live.sourceTTL(ctx, "velov_realtime", 45*time.Second))
@@ -669,7 +672,7 @@ func (live *Live) Parkings(ctx context.Context, point model.Point, types []strin
 		publicSucceeded := len(liveRows) != 0
 		seenNames := map[string]bool{}
 		for _, row := range liveRows {
-			option, ok := live.mapParking(ctx, row, "public_parking", point, radius, nil, nil)
+			option, ok := live.mapParking(ctx, row, "public_parking", point, radius, nil, nil, model.Ptr(time.Now().In(model.Paris)))
 			if !ok {
 				continue
 			}
@@ -690,7 +693,7 @@ func (live *Live) Parkings(ctx context.Context, point model.Point, types []strin
 			publicSucceeded = true
 		}
 		for _, row := range rows {
-			option, ok := live.mapParking(ctx, row, "public_parking", point, radius, liveMap, observed)
+			option, ok := live.mapParking(ctx, row, "public_parking", point, radius, liveMap, observed, model.Ptr(live.parkingRetrieved))
 			if ok && !seenNames[model.Normalize(option.Name)] {
 				result = append(result, option)
 			}
@@ -708,7 +711,7 @@ func (live *Live) Parkings(ctx context.Context, point model.Point, types []strin
 			successfulSources++
 		}
 		for _, row := range rows {
-			option, ok := live.mapParking(ctx, row, "park_and_ride", point, radius, nil, nil)
+			option, ok := live.mapParking(ctx, row, "park_and_ride", point, radius, nil, nil, model.Ptr(time.Now().In(model.Paris)))
 			if ok {
 				result = append(result, option)
 			}
@@ -737,7 +740,7 @@ func (live *Live) Parkings(ctx context.Context, point model.Point, types []strin
 	return filtered, nil
 }
 
-func (live *Live) mapParking(ctx context.Context, row map[string]any, kind string, point model.Point, radius float64, liveMap map[string]int, observed *time.Time) (model.ParkingOption, bool) {
+func (live *Live) mapParking(ctx context.Context, row map[string]any, kind string, point model.Point, radius float64, liveMap map[string]int, observed *time.Time, retrieved *time.Time) (model.ParkingOption, bool) {
 	latitude, longitude, coordinatesOK := parkingCoordinates(row)
 	name := firstText(row, parkingDefault(kind), "nom", "name")
 	if !coordinatesOK && kind == "park_and_ride" && live.store != nil {
@@ -771,7 +774,7 @@ func (live *Live) mapParking(ctx context.Context, row map[string]any, kind strin
 	if rowObserved == nil {
 		rowObserved = observed
 	}
-	return model.ParkingOption{ID: firstText(row, name, "gid", "id", "nom", "name"), Name: name, Type: kind, Latitude: latitude, Longitude: longitude, Capacity: capacity, AvailableSpaces: available, Status: status, DistanceM: &distance, Realtime: available != nil, ObservedAt: chooseObserved(available, rowObserved)}, true
+	return model.ParkingOption{ID: firstText(row, name, "gid", "id", "nom", "name"), Name: name, Type: kind, Latitude: latitude, Longitude: longitude, Capacity: capacity, AvailableSpaces: available, Status: status, DistanceM: &distance, Realtime: available != nil, ObservedAt: chooseObserved(available, rowObserved), RetrievedAt: retrieved}, true
 }
 
 func parkingCoordinates(row map[string]any) (float64, float64, bool) {
@@ -866,6 +869,7 @@ func (live *Live) parkingAvailability(ctx context.Context) (map[string]int, []ma
 		live.parkingErr = errors.Join(sourceErrors...)
 	}
 	live.parkingLive, live.parkingRows, live.parkingObserved = mapping, cloneRows(liveRows), observed
+	live.parkingRetrieved = time.Now().In(model.Paris)
 	live.parkingExpires = time.Now().Add(live.sourceTTL(ctx, "parking_realtime", time.Minute))
 	return cloneIntMap(mapping), cloneRows(liveRows), observed, live.parkingErr
 }

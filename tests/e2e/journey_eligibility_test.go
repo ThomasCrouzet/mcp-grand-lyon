@@ -10,6 +10,7 @@ func TestTripEligibilityAcceptance(t *testing.T) {
 	runCase(t, "journey-walking-boundary", testEligibilityWalkingBoundary)
 	runCase(t, "journey-informational-unavailable", testEligibilityKeepsInformation)
 	runCase(t, "journey-deadline-and-wheelchair", testEligibilityDeadlineAndWheelchair)
+	runCase(t, "journey-closed-velov-station", testEligibilityRejectsClosedStation)
 }
 
 func testEligibilityWithoutTCLRoute(t *testing.T) {
@@ -120,6 +121,25 @@ func testEligibilityDeadlineAndWheelchair(t *testing.T) {
 	assertStatus(t, unverified, "unavailable")
 	if dataObject(t, unverified)["recommended_mode"] != nil {
 		t.Fatalf("unverified wheelchair route was recommended: %#v", unverified)
+	}
+	client.close(true)
+}
+
+func testEligibilityRejectsClosedStation(t *testing.T) {
+	stations := []map[string]any{
+		{"number": "closed", "name": "Closed station", "lat": 45.7600, "lng": 4.8600, "available_bikes": 20, "available_bike_stands": 20, "bike_stands": 20, "status": "CLOSED"},
+		{"number": "open", "name": "Open station", "lat": 45.7601, "lng": 4.8600, "available_bikes": 10, "available_bike_stands": 2, "bike_stands": 20, "status": "OPEN"},
+		{"number": "destination", "name": "Destination station", "lat": 45.7580, "lng": 4.8330, "available_bikes": 5, "available_bike_stands": 10, "bike_stands": 20, "status": "OPEN"},
+	}
+	client := startJourneyMCP(t, "journey-closed-station", map[string]any{
+		"datagrandlyon/velov.json": map[string]any{"values": stations},
+	}, nil)
+	arguments := journeyArguments([]string{"velov"})
+	arguments["preferences"] = walkingPreferences(5000)
+	result := client.callTool("lyon_trip_options", arguments)
+	options := objectList(t, dataObject(t, result), "options")
+	if len(options) != 1 || options[0]["summary"] != "Velov Open station to Destination station" {
+		t.Fatalf("closed station was selected: %#v", options)
 	}
 	client.close(true)
 }

@@ -71,6 +71,7 @@ type Departure struct {
 	StopRef      *string    `json:"stop_ref" yaml:"stop_ref"`
 	ScheduledAt  *time.Time `json:"scheduled_at" yaml:"scheduled_at"`
 	ExpectedAt   *time.Time `json:"expected_at" yaml:"expected_at"`
+	ObservedAt   *time.Time `json:"observed_at" yaml:"observed_at"`
 	DelaySeconds *int       `json:"delay_seconds" yaml:"delay_seconds"`
 	Realtime     bool       `json:"realtime" yaml:"realtime"`
 	Cancelled    bool       `json:"cancelled" yaml:"cancelled"`
@@ -99,7 +100,9 @@ type ParkingOption struct {
 	Status            string     `json:"status" yaml:"status"`
 	DistanceM         *float64   `json:"distance_m" yaml:"distance_m"`
 	Realtime          bool       `json:"realtime" yaml:"realtime"`
+	Stale             bool       `json:"stale" yaml:"stale"`
 	ObservedAt        *time.Time `json:"observed_at" yaml:"observed_at"`
+	RetrievedAt       *time.Time `json:"retrieved_at" yaml:"retrieved_at"`
 }
 
 type VelovStation struct {
@@ -112,6 +115,7 @@ type VelovStation struct {
 	Capacity       int        `json:"capacity" yaml:"capacity"`
 	Status         string     `json:"status" yaml:"status"`
 	ObservedAt     *time.Time `json:"observed_at" yaml:"observed_at"`
+	RetrievedAt    *time.Time `json:"retrieved_at" yaml:"retrieved_at"`
 	DistanceM      *float64   `json:"distance_m" yaml:"distance_m"`
 }
 
@@ -232,6 +236,7 @@ type TripOption struct {
 	WalkingDistanceM         *int           `json:"walking_distance_m" yaml:"walking_distance_m"`
 	Transfers                int            `json:"transfers" yaml:"transfers"`
 	Availability             *string        `json:"availability" yaml:"availability"`
+	AvailabilityStale        bool           `json:"availability_stale" yaml:"availability_stale"`
 	Reliability              *float64       `json:"reliability" yaml:"reliability"`
 	Accessibility            *string        `json:"accessibility" yaml:"accessibility"`
 	Legs                     []TripLeg      `json:"legs" yaml:"legs"`

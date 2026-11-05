@@ -35,6 +35,7 @@ func (a *App) PersonalBriefing(ctx context.Context, input model.PersonalBriefing
 	}
 	facts := map[string]any{"profile": profile, "include": include}
 	warnings := []model.WarningItem{}
+	sources := []model.SourceProvenance{}
 
 	commuteKey := briefingStringValue(configuration["commute"])
 	if commuteKey == "" {
@@ -62,6 +63,7 @@ func (a *App) PersonalBriefing(ctx context.Context, input model.PersonalBriefing
 						departures := a.NextDepartures(ctx, model.NextDeparturesInput{Stop: *originRef, At: &at, Limit: 3})
 						facts["departures"] = departures.Data
 						warnings = append(warnings, departures.Warnings...)
+						sources = append(sources, departures.Sources...)
 						if departures.Status == "not_found" {
 							message := fmt.Sprintf("Departures were not found near profile place %q.", origin)
 							warnings = append(warnings, briefingWarning("PARTIAL_RESULT", "transit", message, false))
@@ -72,6 +74,7 @@ func (a *App) PersonalBriefing(ctx context.Context, input model.PersonalBriefing
 						stations := a.VelovStations(ctx, *originRef, 1000, minimumBikes, 3)
 						facts["velov"] = stations.Data
 						warnings = append(warnings, stations.Warnings...)
+						sources = append(sources, stations.Sources...)
 					}
 				}
 			}
@@ -82,6 +85,7 @@ func (a *App) PersonalBriefing(ctx context.Context, input model.PersonalBriefing
 		mobility := a.MobilityStatus(ctx, model.MobilityStatusInput{Include: mobilityInclude})
 		facts["mobility"] = mobility.Data
 		warnings = append(warnings, mobility.Warnings...)
+		sources = append(sources, mobility.Sources...)
 	}
 
 	changes := []model.BriefingChange{}
@@ -93,6 +97,8 @@ func (a *App) PersonalBriefing(ctx context.Context, input model.PersonalBriefing
 			changes = compareBriefingFacts(previous, facts)
 		}
 	}
+	sources = uniqueSources(sources)
+	facts["sources"] = sources
 	snapshot := map[string]any{"facts": facts, "at": at.Format(time.RFC3339)}
 	if err := a.Store.SaveSnapshot(ctx, profile, snapshot); err != nil {
 		warnings = append(warnings, briefingWarning("PARTIAL_RESULT", "briefing_history", "Briefing snapshot was not saved.", true))
@@ -110,6 +116,7 @@ func (a *App) PersonalBriefing(ctx context.Context, input model.PersonalBriefing
 		"profile": profile, "at": at, "summary": summary, "facts": facts, "changes": changes,
 	})
 	result.Warnings = warnings
+	result.Sources = sources
 	result.Degraded = len(warnings) != 0
 	return result
 }
