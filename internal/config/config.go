@@ -83,6 +83,12 @@ type yamlRuntime struct {
 	Timezone            *string    `yaml:"timezone"`
 	Locale              *string    `yaml:"locale"`
 	MaxParallelRequests *int       `yaml:"max_parallel_requests"`
+	DataDir             *string    `yaml:"data_dir"`
+	DBPath              *string    `yaml:"db_path"`
+	FixturesDir         *string    `yaml:"fixtures_dir"`
+	LogLevel            *string    `yaml:"log_level"`
+	TransitousEnabled   *looseBool `yaml:"transitous_enabled"`
+	TransitousBaseURL   *string    `yaml:"transitous_base_url"`
 }
 
 type yamlResults struct {
@@ -188,22 +194,42 @@ func load(readSettings bool) (Config, error) {
 	return cfg, nil
 }
 
-// WriteSecrets stores runtime values in the resolved user configuration directory.
+// WriteSecrets stores credentials and the configuration-directory bootstrap in
+// the resolved user configuration directory. Ordinary settings live in
+// settings.yaml or explicit launch environment variables.
 func WriteSecrets(cfg Config) error {
-	values := environmentValues(cfg)
+	values := secretEnvironmentValues(cfg)
+	return writeSecretsFile(cfg.ConfigDir, values)
+}
+
+func secretEnvironmentValues(cfg Config) map[string]string {
+	return map[string]string{
+		"DATAGRANDLYON_USERNAME":    cfg.Username,
+		"DATAGRANDLYON_PASSWORD":    cfg.Password,
+		"GRAND_LYON_MCP_CONFIG_DIR": cfg.ConfigDir,
+	}
+}
+
+func writeSecretsFile(configDir string, values map[string]string) error {
 	var contents bytes.Buffer
 	for _, key := range supportedEnvironmentKeys {
+		if _, present := values[key]; !present {
+			continue
+		}
 		value, err := encodeEnvironmentValue(values[key])
 		if err != nil {
 			return fmt.Errorf("encode secrets key %s: %w", key, err)
 		}
 		fmt.Fprintf(&contents, "%s=%s\n", key, value)
 	}
-	if err := os.MkdirAll(cfg.ConfigDir, 0o700); err != nil {
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return fmt.Errorf("create configuration directory: %w", err)
 	}
-	path := filepath.Join(cfg.ConfigDir, "secrets.env")
-	temporary, err := os.CreateTemp(cfg.ConfigDir, ".secrets-*")
+	path := filepath.Join(configDir, "secrets.env")
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, contents.Bytes()) {
+		return nil
+	}
+	temporary, err := os.CreateTemp(configDir, ".secrets-*")
 	if err != nil {
 		return fmt.Errorf("create temporary secrets file: %w", err)
 	}
@@ -292,6 +318,27 @@ func applyYAML(cfg *Config, path string) error {
 	if overlay.Runtime.MaxParallelRequests != nil {
 		cfg.MaxParallel = *overlay.Runtime.MaxParallelRequests
 	}
+	if overlay.Runtime.DataDir != nil && strings.TrimSpace(*overlay.Runtime.DataDir) != "" {
+		cfg.DataDir = *overlay.Runtime.DataDir
+		if overlay.Runtime.DBPath == nil {
+			cfg.DBPath = filepath.Join(cfg.DataDir, "grand_lyon_mcp.db")
+		}
+	}
+	if overlay.Runtime.DBPath != nil && strings.TrimSpace(*overlay.Runtime.DBPath) != "" {
+		cfg.DBPath = *overlay.Runtime.DBPath
+	}
+	if overlay.Runtime.FixturesDir != nil {
+		cfg.FixturesDir = *overlay.Runtime.FixturesDir
+	}
+	if overlay.Runtime.LogLevel != nil && strings.TrimSpace(*overlay.Runtime.LogLevel) != "" {
+		cfg.LogLevel = strings.ToUpper(strings.TrimSpace(*overlay.Runtime.LogLevel))
+	}
+	if overlay.Runtime.TransitousEnabled != nil {
+		cfg.TransitousEnabled = bool(*overlay.Runtime.TransitousEnabled)
+	}
+	if overlay.Runtime.TransitousBaseURL != nil && strings.TrimSpace(*overlay.Runtime.TransitousBaseURL) != "" {
+		cfg.TransitousBaseURL = *overlay.Runtime.TransitousBaseURL
+	}
 	if overlay.Places.FuzzyScoreThreshold != nil {
 		cfg.FuzzyScoreThreshold = *overlay.Places.FuzzyScoreThreshold
 	}
@@ -337,8 +384,13 @@ func applyJourneyYAML(weights *model.JourneyScoringWeights, overlay yamlJourneyS
 
 func applyEnvironment(cfg *Config, values map[string]string) error {
 	cfg.ConfigDir = valueOr(values, "GRAND_LYON_MCP_CONFIG_DIR", cfg.ConfigDir)
-	cfg.DataDir = valueOr(values, "GRAND_LYON_MCP_DATA_DIR", cfg.DataDir)
-	cfg.DBPath = valueOr(values, "GRAND_LYON_MCP_DB_PATH", filepath.Join(cfg.DataDir, "grand_lyon_mcp.db"))
+	if value := values["GRAND_LYON_MCP_DATA_DIR"]; value != "" {
+		if cfg.DBPath == filepath.Join(cfg.DataDir, "grand_lyon_mcp.db") {
+			cfg.DBPath = filepath.Join(value, "grand_lyon_mcp.db")
+		}
+		cfg.DataDir = value
+	}
+	cfg.DBPath = valueOr(values, "GRAND_LYON_MCP_DB_PATH", cfg.DBPath)
 	cfg.FixturesDir = valueOr(values, "GRAND_LYON_MCP_FIXTURES_DIR", cfg.FixturesDir)
 	cfg.LogLevel = strings.ToUpper(valueOr(values, "GRAND_LYON_MCP_LOG_LEVEL", cfg.LogLevel))
 	cfg.Username = valueOr(values, "DATAGRANDLYON_USERNAME", cfg.Username)
@@ -529,26 +581,6 @@ func encodeEnvironmentValue(value string) (string, error) {
 		"$", "\\$",
 	)
 	return "\"" + replacer.Replace(value) + "\"", nil
-}
-
-func environmentValues(cfg Config) map[string]string {
-	return map[string]string{
-		"DATAGRANDLYON_USERNAME":                      cfg.Username,
-		"DATAGRANDLYON_PASSWORD":                      cfg.Password,
-		"GRAND_LYON_MCP_CONFIG_DIR":                   cfg.ConfigDir,
-		"GRAND_LYON_MCP_DATA_DIR":                     cfg.DataDir,
-		"GRAND_LYON_MCP_DB_PATH":                      cfg.DBPath,
-		"GRAND_LYON_MCP_FIXTURES_DIR":                 cfg.FixturesDir,
-		"GRAND_LYON_MCP_LOG_LEVEL":                    cfg.LogLevel,
-		"GRAND_LYON_MCP_OFFLINE":                      strconv.FormatBool(cfg.Offline),
-		"GRAND_LYON_MCP_VERIFY_TLS":                   strconv.FormatBool(cfg.VerifyTLS),
-		"GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS": formatSeconds(cfg.ConnectTimeout),
-		"GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS":    formatSeconds(cfg.ReadTimeout),
-		"GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS":        strconv.Itoa(cfg.MaxParallel),
-		"GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD":        strconv.Itoa(cfg.FuzzyScoreThreshold),
-		"TRANSITOUS_ENABLED":                          strconv.FormatBool(cfg.TransitousEnabled),
-		"TRANSITOUS_BASE_URL":                         cfg.TransitousBaseURL,
-	}
 }
 
 func formatSeconds(value time.Duration) string {
