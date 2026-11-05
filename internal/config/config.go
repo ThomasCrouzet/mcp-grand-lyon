@@ -34,6 +34,7 @@ var supportedEnvironmentKeys = []string{
 	"GRAND_LYON_MCP_VERIFY_TLS",
 	"GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS",
 	"GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS",
+	"GRAND_LYON_MCP_TOOL_TIMEOUT_SECONDS",
 	"GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS",
 	"GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD",
 	"GRAND_LYON_MCP_BRIEFING_RETENTION_DAYS",
@@ -69,6 +70,7 @@ type Config struct {
 	ConnectTimeout      time.Duration
 	ReadTimeout         time.Duration
 	FuzzyScoreThreshold int
+	ToolTimeout         time.Duration
 	BriefingRetention   HistoryRetention
 	VelovRetention      HistoryRetention
 	JourneyScoring      model.JourneyScoringWeights
@@ -122,6 +124,7 @@ type yamlCache struct {
 type yamlNetwork struct {
 	ConnectTimeoutSeconds *float64   `yaml:"connect_timeout_seconds"`
 	ReadTimeoutSeconds    *float64   `yaml:"read_timeout_seconds"`
+	ToolTimeoutSeconds    *float64   `yaml:"tool_timeout_seconds"`
 	MaximumAttempts       *int       `yaml:"maximum_attempts"`
 	VerifyTLS             *looseBool `yaml:"verify_tls"`
 }
@@ -292,6 +295,7 @@ func defaultConfig(configDir, dataDir string) Config {
 		MaxParallel:         6,
 		ConnectTimeout:      5 * time.Second,
 		ReadTimeout:         20 * time.Second,
+		ToolTimeout:         15 * time.Second,
 		FuzzyScoreThreshold: 72,
 		BriefingRetention:   HistoryRetention{MaxAgeDays: 90, MaxCount: 100},
 		VelovRetention:      HistoryRetention{MaxAgeDays: 30, MaxCount: 10000},
@@ -374,6 +378,12 @@ func applyYAML(cfg *Config, path string) error {
 			return errors.New("network.read_timeout_seconds must be finite")
 		}
 		cfg.ReadTimeout = seconds(*overlay.Network.ReadTimeoutSeconds)
+	}
+	if overlay.Network.ToolTimeoutSeconds != nil {
+		if !finite(*overlay.Network.ToolTimeoutSeconds) {
+			return errors.New("network.tool_timeout_seconds must be finite")
+		}
+		cfg.ToolTimeout = seconds(*overlay.Network.ToolTimeoutSeconds)
 	}
 	if overlay.Network.VerifyTLS != nil {
 		cfg.VerifyTLS = bool(*overlay.Network.VerifyTLS)
@@ -464,6 +474,9 @@ func applyEnvironment(cfg *Config, values map[string]string) error {
 	if cfg.ReadTimeout, err = durationValue(values, "GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS", cfg.ReadTimeout); err != nil {
 		return err
 	}
+	if cfg.ToolTimeout, err = durationValue(values, "GRAND_LYON_MCP_TOOL_TIMEOUT_SECONDS", cfg.ToolTimeout); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -471,8 +484,8 @@ func validate(cfg Config) error {
 	if cfg.ConfigDir == "" || cfg.DataDir == "" || cfg.DBPath == "" {
 		return errors.New("configuration, data, and database paths must not be empty")
 	}
-	if cfg.ConnectTimeout <= 0 || cfg.ReadTimeout <= 0 {
-		return errors.New("HTTP timeouts must be greater than zero")
+	if cfg.ConnectTimeout <= 0 || cfg.ReadTimeout <= 0 || cfg.ToolTimeout <= 0 {
+		return errors.New("HTTP and tool timeouts must be greater than zero")
 	}
 	if cfg.MaxParallel < 1 {
 		return errors.New("max_parallel_requests must be at least 1")

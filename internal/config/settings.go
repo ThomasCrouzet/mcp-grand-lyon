@@ -31,6 +31,7 @@ var settingMappings = []settingMapping{
 	{"GRAND_LYON_MCP_VERIFY_TLS", "network", "verify_tls", "bool"},
 	{"GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS", "network", "connect_timeout_seconds", "float"},
 	{"GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS", "network", "read_timeout_seconds", "float"},
+	{"GRAND_LYON_MCP_TOOL_TIMEOUT_SECONDS", "network", "tool_timeout_seconds", "float"},
 	{"GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD", "places", "fuzzy_score_threshold", "int"},
 	{"GRAND_LYON_MCP_BRIEFING_RETENTION_DAYS", "retention", "briefing_max_age_days", "int"},
 	{"GRAND_LYON_MCP_BRIEFING_MAX_COUNT", "retention", "briefing_max_count", "int"},
@@ -231,6 +232,8 @@ func effectiveSettingValue(cfg Config, mapping settingMapping) string {
 		return formatSeconds(cfg.ConnectTimeout)
 	case "GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS":
 		return formatSeconds(cfg.ReadTimeout)
+	case "GRAND_LYON_MCP_TOOL_TIMEOUT_SECONDS":
+		return formatSeconds(cfg.ToolTimeout)
 	case "GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD":
 		return strconv.Itoa(cfg.FuzzyScoreThreshold)
 	case "GRAND_LYON_MCP_BRIEFING_RETENTION_DAYS":

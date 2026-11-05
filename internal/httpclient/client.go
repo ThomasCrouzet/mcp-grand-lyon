@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -34,6 +35,7 @@ var (
 	ErrResponseEncoding = errors.New("HTTP response encoding must be identity")
 	ErrRequestFailed    = errors.New("HTTP request failed")
 	ErrDownloadFailed   = errors.New("download file operation failed")
+	ErrRetryBudget      = errors.New("retry delay exceeds the remaining request budget")
 )
 
 var retryableStatus = map[int]struct{}{
@@ -59,6 +61,17 @@ type Client struct {
 	permits      chan struct{}
 	totalTimeout time.Duration
 	closeOnce    sync.Once
+	flightsMu    sync.Mutex
+	flights      map[string]*flight
+}
+
+type flight struct {
+	done     chan struct{}
+	context  context.Context
+	response *Response
+	err      error
+	cancel   context.CancelFunc
+	waiters  int
 }
 
 func New(cfg config.Config) *Client {
@@ -85,6 +98,7 @@ func NewWithTransport(cfg config.Config, transport http.RoundTripper) *Client {
 		allowedHosts: allowedHosts,
 		permits:      make(chan struct{}, maximumParallel),
 		totalTimeout: cfg.ConnectTimeout + cfg.ReadTimeout,
+		flights:      map[string]*flight{},
 	}
 	client.http = &http.Client{
 		Transport:     transport,
@@ -129,6 +143,83 @@ func (client *Client) Get(
 	if maxBytes <= 0 {
 		return nil, ErrInvalidLimit
 	}
+	if client.cfg.Offline {
+		return nil, ErrOffline
+	}
+	key := client.flightKey(rawURL, auth, maxBytes)
+	current, leader := client.joinFlight(ctx, key)
+	defer client.leaveFlight(key, current)
+	if leader {
+		go client.runFlight(key, current, rawURL, auth, maxBytes)
+	}
+	select {
+	case <-current.done:
+		if current.err != nil {
+			return nil, current.err
+		}
+		return cloneResponse(current.response), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (client *Client) flightKey(rawURL string, auth bool, maxBytes int64) string {
+	identity := ""
+	if auth {
+		identity = client.cfg.Username
+	}
+	return rawURL + "|" + strconv.FormatBool(auth) + "|" + strconv.FormatInt(maxBytes, 10) + "|" + identity
+}
+
+func (client *Client) joinFlight(ctx context.Context, key string) (*flight, bool) {
+	client.flightsMu.Lock()
+	defer client.flightsMu.Unlock()
+	if existing, ok := client.flights[key]; ok {
+		existing.waiters++
+		return existing, false
+	}
+	workContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	if client.totalTimeout > 0 {
+		workContext, cancel = context.WithTimeout(context.WithoutCancel(ctx), client.totalTimeout)
+	}
+	current := &flight{done: make(chan struct{}), context: workContext, cancel: cancel, waiters: 1}
+	client.flights[key] = current
+	return current, true
+}
+
+func (client *Client) runFlight(key string, current *flight, rawURL string, auth bool, maxBytes int64) {
+	response, err := client.getDirect(current.context, rawURL, auth, maxBytes)
+	client.flightsMu.Lock()
+	current.response = response
+	current.err = err
+	close(current.done)
+	delete(client.flights, key)
+	client.flightsMu.Unlock()
+	current.cancel()
+}
+
+func (client *Client) leaveFlight(key string, current *flight) {
+	client.flightsMu.Lock()
+	defer client.flightsMu.Unlock()
+	current.waiters--
+	if current.waiters <= 0 {
+		current.cancel()
+		if client.flights[key] == current {
+			delete(client.flights, key)
+		}
+	}
+}
+
+func cloneResponse(response *Response) *Response {
+	if response == nil {
+		return nil
+	}
+	copied := *response
+	copied.Header = response.Header.Clone()
+	return &copied
+}
+
+func (client *Client) getDirect(ctx context.Context, rawURL string, auth bool, maxBytes int64) (*Response, error) {
 	ctx, cancel := client.withTimeout(ctx)
 	defer cancel()
 	if err := client.acquire(ctx); err != nil {
@@ -235,8 +326,13 @@ func (client *Client) do(
 		response, requestErr := client.http.Do(request)
 		if requestErr == nil {
 			if _, retry := retryableStatus[response.StatusCode]; retry && attempt < maximumAttempts {
+				delay, hasDelay := parseRetryAfter(response.Header.Get("Retry-After"), time.Now())
 				_ = response.Body.Close()
-				if err := waitForRetry(ctx, attempt); err != nil {
+				if hasDelay {
+					if err := waitRetryDelay(ctx, delay); err != nil {
+						return nil, err
+					}
+				} else if err := waitForRetry(ctx, attempt); err != nil {
 					return nil, err
 				}
 				continue
@@ -263,7 +359,19 @@ func (client *Client) do(
 }
 
 func waitForRetry(ctx context.Context, attempt int) error {
-	timer := time.NewTimer(firstRetryDelay * time.Duration(1<<(attempt-1)))
+	base := firstRetryDelay * time.Duration(1<<(attempt-1))
+	jitter := time.Duration(rand.Int63n(int64(base/2) + 1))
+	return waitRetryDelay(ctx, base/2+jitter)
+}
+
+func waitRetryDelay(ctx context.Context, delay time.Duration) error {
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < delay {
+		return ErrRetryBudget
+	}
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
@@ -271,6 +379,24 @@ func waitForRetry(ctx context.Context, attempt int) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second, true
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		delay := at.Sub(now)
+		if delay < 0 {
+			delay = 0
+		}
+		return delay, true
+	}
+	return 0, false
 }
 
 func (client *Client) checkRedirect(request *http.Request, via []*http.Request) error {
