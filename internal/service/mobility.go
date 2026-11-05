@@ -79,7 +79,7 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 		if len(areaPoints) > len(areaLabels) {
 			result.Warn("PARTIAL_RESULT", "traffic", "Traffic conditions cannot be filtered by coordinate-only areas.", false)
 		}
-		if len(input.Areas) == 0 || len(areaLabels) != 0 {
+		{
 			labels := areaLabels
 			if len(labels) == 0 {
 				labels = []string{""}
