@@ -18,7 +18,7 @@ func New(app *service.App) (*mcp.Server, error) {
 		return nil, err
 	}
 	for _, tool := range tools {
-		server.AddTool(&mcp.Tool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		server.AddTool(&mcp.Tool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, OutputSchema: tool.OutputSchema, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			result := app.Call(ctx, tool.Name, request.Params.Arguments)
 			data, err := json.Marshal(result)
 			if err != nil {

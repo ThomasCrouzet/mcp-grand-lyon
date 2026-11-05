@@ -9,6 +9,11 @@ Envelope summaries use concise status text.
 
 ## Result envelope
 
+`tools/list` advertises an `outputSchema` for every public tool. The schema is
+generated from the shared envelope and domain model types, so unknown or
+unavailable values remain representable as `null` instead of invented zeroes.
+`structuredContent` and the JSON text content carry the same domain envelope.
+
 ```json
 {
   "schema_version": "1.0",
@@ -48,6 +53,10 @@ Invalid arguments and complete failures include `data.error`:
 `code` is stable for client branching; `field` is a JSON path when known, and
 `expected` states the constraint or supported shape. Error messages never include
 credentials.
+
+The envelope keeps `schema_version` at `1.0` while fields are added compatibly.
+Removing or changing the meaning of an existing field would require a new schema
+version and an explicit migration; tool names and existing fields stay stable.
 
 Offline fixture results include an `OFFLINE_FIXTURE` warning and `degraded=true`.
 Their source provider is `Fixtures`, with dataset `offline_demo`.

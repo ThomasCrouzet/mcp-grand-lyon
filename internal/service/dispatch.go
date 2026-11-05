@@ -17,10 +17,12 @@ import (
 )
 
 type ToolDefinition struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"inputSchema"`
-	resolved    *jsonschema.Resolved
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	InputSchema  json.RawMessage `json:"inputSchema"`
+	OutputSchema json.RawMessage `json:"outputSchema"`
+	resolved     *jsonschema.Resolved
+	resolvedOut  *jsonschema.Resolved
 }
 
 type validationDetail struct {
@@ -65,6 +67,18 @@ var definitions = sync.OnceValues(func() (map[string]ToolDefinition, error) {
 			return nil, err
 		}
 		tool.resolved, err = schema.Resolve(nil)
+		if err != nil {
+			return nil, err
+		}
+		output, outputErr := OutputSchema(name)
+		if outputErr != nil {
+			return nil, outputErr
+		}
+		tool.OutputSchema, err = json.Marshal(output)
+		if err != nil {
+			return nil, err
+		}
+		tool.resolvedOut, err = output.Resolve(nil)
 		if err != nil {
 			return nil, err
 		}
