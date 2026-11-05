@@ -91,6 +91,8 @@ func execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return runConfig(args[1:], stdout, stderr)
 	case "history":
 		return runHistory(ctx, args[1:], stdout, stderr)
+	case "profile":
+		return runProfile(ctx, args[1:], stdout, stderr)
 	case "env":
 		return runEnvironment(args[1:], stdout, stderr)
 	case "client-config":
@@ -822,7 +824,7 @@ func smokePayloads() map[string]map[string]any {
 
 func writeHelp(output io.Writer) {
 	fmt.Fprintln(output, "Usage: grand-lyon-mcp <command> [options]")
-	fmt.Fprintln(output, "Commands: setup, config, env, client-config, doctor, db, history, sync, catalog, snapshot, smoke, serve, version")
+	fmt.Fprintln(output, "Commands: setup, config, env, client-config, doctor, db, history, profile, sync, catalog, snapshot, smoke, serve, version")
 }
 
 func newFlagSet(name string, output io.Writer) *flag.FlagSet {

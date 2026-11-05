@@ -148,6 +148,30 @@ SQLite reuses free pages after retention deletes rows.
 It does not reduce the file size after every deletion.
 Back up the database before manual compaction.
 
+## Profiles
+
+Manage personal places, commutes, and briefings without editing YAML:
+
+```bash
+grand-lyon-mcp profile list
+grand-lyon-mcp profile set --type place --name home \
+  --label Home --latitude 45.7606 --longitude 4.8618
+grand-lyon-mcp profile set --type place --name work --address "Lyon 2e"
+grand-lyon-mcp profile set --type commute --name daily \
+  --origin home --destination work --max-walking-m 800 --modes tcl,velov
+grand-lyon-mcp profile set --type briefing --name morning \
+  --commute daily --include transit,velov,traffic
+grand-lyon-mcp profile validate
+grand-lyon-mcp profile remove --type briefing --name morning
+```
+
+Commands are noninteractive and return JSON.
+`profiles.yaml` is the source of truth when present; startup synchronizes SQLite
+to that file, so a removed entry is not silently restored.
+Updates are validated before writing, use an atomic file replacement, and preserve
+unrelated profiles. Existing hand-edited YAML remains supported.
+No profile write tool is exposed through MCP.
+
 ## Source discovery
 
 ```bash

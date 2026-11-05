@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/model"
@@ -52,7 +53,31 @@ func (s *Store) LoadProfiles(ctx context.Context, body []byte) error {
 			return err
 		}
 	}
+	if err := deleteMissingKeys(ctx, tx, "user_places", "place_key", document.Places); err != nil {
+		return err
+	}
+	if err := deleteMissingKeys(ctx, tx, "commute_profiles", "profile_key", document.Commutes); err != nil {
+		return err
+	}
+	if err := deleteMissingKeys(ctx, tx, "briefing_profiles", "profile_key", document.Briefings); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func deleteMissingKeys(ctx context.Context, tx *sql.Tx, table, keyColumn string, values map[string]map[string]any) error {
+	if len(values) == 0 {
+		_, err := tx.ExecContext(ctx, "DELETE FROM "+table)
+		return err
+	}
+	placeholders := make([]string, 0, len(values))
+	args := make([]any, 0, len(values))
+	for key := range values {
+		placeholders = append(placeholders, "?")
+		args = append(args, key)
+	}
+	_, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE "+keyColumn+" NOT IN ("+strings.Join(placeholders, ",")+")", args...)
+	return err
 }
 
 func upsertJSONProfile(ctx context.Context, tx *sql.Tx, table, key string, value map[string]any, now string) error {
