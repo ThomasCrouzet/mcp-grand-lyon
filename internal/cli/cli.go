@@ -21,6 +21,7 @@ import (
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/config"
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/model"
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/service"
+	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/storage"
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/version"
 )
 
@@ -276,6 +277,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 			"data_dir":                 cfg.DataDir,
 			"db_path":                  cfg.DBPath,
 			"database":                 info,
+			"storage":                  storage.InspectStorage(cfg.DataDir, cfg.DBPath),
 			"sources":                  sourceStatus,
 			"transitous_enabled":       cfg.TransitousEnabled,
 			"tls_verification_enabled": cfg.VerifyTLS,
@@ -285,16 +287,23 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 
 func runDatabase(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return usageError("db requires migrate or info")
+		return usageError("db requires migrate, info, or secure")
 	}
 	command := args[0]
-	if command != "migrate" && command != "info" {
+	if command != "migrate" && command != "info" && command != "secure" {
 		return usageError("unknown db command %q", command)
 	}
 	if err := requireNoArguments(args[1:]); err != nil {
 		return err
 	}
 	return withApp(ctx, func(cfg config.Config, app *service.App) error {
+		if command == "secure" {
+			result, err := storage.SecureStorage(cfg.DataDir, cfg.DBPath)
+			if err != nil {
+				return err
+			}
+			return writeJSON(stdout, result)
+		}
 		info, err := app.Store.Info(ctx)
 		if err != nil {
 			return err

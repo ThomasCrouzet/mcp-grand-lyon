@@ -23,6 +23,9 @@ type App struct {
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
+	if err := storage.EnsureDataDirectory(cfg.DataDir); err != nil {
+		return nil, err
+	}
 	store, err := storage.Open(ctx, cfg.DBPath)
 	if err != nil {
 		return nil, err

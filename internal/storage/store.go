@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -30,7 +28,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("database path is empty")
 	}
 	if path != ":memory:" && !strings.HasPrefix(path, "file:") {
-		if err := ensureParent(path); err != nil {
+		if err := preparePrivatePath(path); err != nil {
 			return nil, err
 		}
 	}
@@ -62,14 +60,6 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 	return store, nil
-}
-
-func ensureParent(path string) error {
-	parent := filepath.Dir(path)
-	if parent == "." || parent == "" {
-		return nil
-	}
-	return os.MkdirAll(parent, 0o755)
 }
 
 func (s *Store) Close() error {
