@@ -293,3 +293,18 @@ the tool sends no notifications.
 
 Administrative and raw-provider operations are not MCP tools. Use the CLI for
 source discovery, data import, and database maintenance.
+
+The briefing resolves both commute endpoints and reuses the journey, departure,
+Vélo'v, mobility, and environment services. It applies the configured modes,
+preferred lines, walking/bicycle/dock limits, accessibility and disruption
+preferences. Unrelated line disruptions are filtered out, while an unavailable
+section produces an explicit warning instead of a fabricated fact. Aggregated
+facts retain their source provenance.
+
+With `compare_with_previous`, changes use stable identities for departures,
+journey options, bicycle stations, disruptions, and environment indicators.
+They distinguish additions, removals, meaningful updates, and lost evidence,
+include previous/current values and source timestamps, ignore request-only
+timestamps and list reordering, and are capped at 50 with `changes_truncated`.
+`changes_baseline` is `previous`, `none`, or `not_requested`; a first comparison
+reports `NO_BASELINE` instead of inventing history.

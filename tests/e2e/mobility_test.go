@@ -124,8 +124,15 @@ func testBriefingProfileAndChange(t *testing.T) {
 	assertStatus(t, changed, "partial")
 	assertWarningSource(t, changed, "SOURCE_UNAVAILABLE", "traffic")
 	assertAuditBriefingFacts(t, changed)
-	if !containsFieldValue(objectList(t, dataObject(t, changed), "changes"), "key", "velov") {
-		t.Fatalf("changed Velov facts were not reported: %#v", dataObject(t, changed)["changes"])
+	changes := objectList(t, dataObject(t, changed), "changes")
+	foundVelov := false
+	for _, change := range changes {
+		if strings.HasPrefix(stringValue(change["key"]), "velov:") && change["previous"] != nil && change["current"] != nil {
+			foundVelov = true
+		}
+	}
+	if !foundVelov {
+		t.Fatalf("changed Velov facts were not reported: %#v", changes)
 	}
 	client.close(true)
 }
