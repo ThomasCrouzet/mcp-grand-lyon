@@ -112,6 +112,35 @@ func (s *Store) GetSource(ctx context.Context, id string) (map[string]any, error
 	return value, err
 }
 
+// SourceHealth returns the latest observed health row per source.
+func (s *Store) SourceHealth(ctx context.Context) (map[string]map[string]any, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT source_id,last_success_at,last_failure_at,consecutive_failures,last_status,last_latency_ms,last_error_code
+		FROM source_health`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]map[string]any{}
+	for rows.Next() {
+		var id string
+		var success, failure, lastStatus, errorCode sql.NullString
+		var failures, latency sql.NullInt64
+		if err := rows.Scan(&id, &success, &failure, &failures, &lastStatus, &latency, &errorCode); err != nil {
+			return nil, err
+		}
+		value := map[string]any{"consecutive_failures": failures.Int64}
+		putNullString(value, "last_success_at", success)
+		putNullString(value, "last_failure_at", failure)
+		putNullString(value, "last_status", lastStatus)
+		putNullString(value, "last_error_code", errorCode)
+		if latency.Valid {
+			value["last_latency_ms"] = latency.Int64
+		}
+		result[id] = value
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) SetSourceStatus(ctx context.Context, id, status, table string) error {
 	result, err := s.DB.ExecContext(ctx, `UPDATE source_registry SET status=?,table_name=COALESCE(NULLIF(?,''),table_name),updated_at=? WHERE source_id=?`,
 		status, table, time.Now().UTC().Format(time.RFC3339Nano), id)

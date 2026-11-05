@@ -324,6 +324,10 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 		if stat, statErr := os.Stat(cfg.DBPath); statErr == nil {
 			history["db_size_bytes"] = stat.Size()
 		}
+		gtfs, err := app.Store.GTFSCoverage(ctx, model.Now())
+		if err != nil {
+			return err
+		}
 		modeReason := "explicit offline mode"
 		if !cfg.Offline {
 			modeReason = "live mode requested"
@@ -345,6 +349,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 			"database":                 info,
 			"storage":                  storage.InspectStorage(cfg.DataDir, cfg.DBPath),
 			"history":                  history,
+			"gtfs":                     gtfs,
 			"sources":                  sourceStatus,
 			"source_capabilities":      capabilities,
 			"transitous_enabled":       cfg.TransitousEnabled,
