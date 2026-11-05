@@ -44,6 +44,35 @@ func TestParseSIRIDeparturesSupportsScalarObjects(t *testing.T) {
 	}
 }
 
+func TestParseSIRIDeparturesPreservesResponseTimestamp(t *testing.T) {
+	payload := map[string]any{
+		"ServiceDelivery": map[string]any{
+			"ResponseTimestamp": "2026-07-20T08:00:00+02:00",
+			"EstimatedTimetableDelivery": map[string]any{
+				"EstimatedVehicleJourney": map[string]any{
+					"LineRef": "A",
+					"EstimatedCalls": map[string]any{"EstimatedCall": map[string]any{
+						"StopPointRef":          "PD1",
+						"AimedDepartureTime":    "2026-07-20T08:04:00+02:00",
+						"ExpectedDepartureTime": "2026-07-20T08:05:00+02:00",
+					}},
+				},
+			},
+		},
+	}
+	departures, err := ParseSIRIDepartures(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(departures) != 1 {
+		t.Fatalf("departures = %d", len(departures))
+	}
+	want := time.Date(2026, 7, 20, 8, 0, 0, 0, time.FixedZone("UTC+2", 2*60*60))
+	if departures[0].ObservedAt == nil || !departures[0].ObservedAt.Equal(want) {
+		t.Fatalf("observation = %v, want %v", departures[0].ObservedAt, want)
+	}
+}
+
 func TestParseSIRIAlertsPreservesScalarLineAndSeverity(t *testing.T) {
 	payload := map[string]any{
 		"Situations": map[string]any{

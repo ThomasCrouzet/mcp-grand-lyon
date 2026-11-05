@@ -91,14 +91,49 @@ func (app *App) NextDepartures(ctx context.Context, input model.NextDeparturesIn
 			departures = filter(raw)
 			for i := range departures {
 				departures[i].Realtime = false
+				departures[i].ObservedAt = nil
 			}
-			result.Sources = append(result.Sources, model.SourceProvenance{Provider: "GTFS", SourceID: "gtfs_tcl", Dataset: "GTFS_TCL", Attribution: "SYTRAL Mobilités", License: "unknown", RetrievedAt: model.Ptr(generated), AgeSeconds: model.Ptr(0)})
+			result.Sources = append(result.Sources, model.SourceProvenance{Provider: "GTFS", SourceID: "gtfs_tcl", Dataset: "GTFS_TCL", Attribution: "SYTRAL Mobilités", License: "unknown", RetrievedAt: model.Ptr(generated)})
 			if len(departures) > 0 {
 				result.Warn("STALE_DATA", "gtfs_tcl", "These are scheduled GTFS departures, not realtime observations.", false)
 			}
 		}
 	} else {
-		result.Sources = append(result.Sources, model.SourceProvenance{Provider: "DataGrandLyon", SourceID: "tcl_departures", Dataset: "prochains_passages", Attribution: "SYTRAL Mobilités", License: "unknown", ObservedAt: model.Ptr(generated), RetrievedAt: model.Ptr(generated), AgeSeconds: model.Ptr(0), Realtime: true})
+		maximumAge := app.maximumStaleSeconds(ctx, "tcl_departures")
+		var observations []*time.Time
+		var retrievals []*time.Time
+		missingObserved := false
+		staleObserved := false
+		for _, departure := range departures {
+			if departure.ObservedAt == nil {
+				missingObserved = true
+				continue
+			}
+			_, stale, _ := observationFreshness(departure.ObservedAt, nil, generated, maximumAge)
+			observations = append(observations, departure.ObservedAt)
+			retrievals = append(retrievals, model.Ptr(generated))
+			staleObserved = staleObserved || stale
+		}
+		observed := oldestObservation(observations...)
+		retrieved := latestRetrieval(retrievals...)
+		if retrieved == nil {
+			retrieved = model.Ptr(generated)
+		}
+		var age *int
+		if observed != nil {
+			age, _, _ = observationFreshness(observed, retrieved, generated, maximumAge)
+		}
+		result.Sources = append(result.Sources, model.SourceProvenance{
+			Provider: "DataGrandLyon", SourceID: "tcl_departures", Dataset: "prochains_passages",
+			Attribution: "SYTRAL Mobilités", License: "unknown",
+			ObservedAt: observed, RetrievedAt: retrieved, AgeSeconds: age, Realtime: true, Stale: staleObserved,
+		})
+		if missingObserved {
+			result.Warn("PARTIAL_RESULT", "tcl_departures", "Some realtime departures have no observation timestamp, so their age is unknown.", false)
+		}
+		if staleObserved {
+			result.Warn("STALE_DATA", "tcl_departures", fmt.Sprintf("Realtime departures exceed the %d-second freshness limit.", maximumAge), false)
+		}
 	}
 	sort.SliceStable(departures, func(i, j int) bool {
 		a, b := departures[i].ExpectedAt, departures[j].ExpectedAt

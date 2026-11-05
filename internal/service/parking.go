@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/model"
 )
@@ -36,11 +37,46 @@ func (a *App) ParkingOptions(ctx context.Context, input model.ParkingOptionsInpu
 		return result
 	}
 	options, availability := normalizeParkingOptions(*point, options, input.Types, float64(input.RadiusM), input.MinimumSpaces, input.Limit)
+	maximumAge := a.maximumStaleSeconds(ctx, "parking_realtime")
+	now := model.Now()
+	staleObserved := false
+	missingObserved := false
+	observations := []*time.Time{}
+	retrievals := []*time.Time{}
+	for index := range options {
+		option := &options[index]
+		if option.RetrievedAt == nil {
+			option.RetrievedAt = model.Ptr(now)
+		}
+		retrievals = append(retrievals, option.RetrievedAt)
+		if option.AvailableSpaces == nil {
+			continue
+		}
+		_, stale, missing := observationFreshness(option.ObservedAt, option.RetrievedAt, now, maximumAge)
+		option.Stale = stale
+		staleObserved = staleObserved || stale
+		missingObserved = missingObserved || missing
+		observations = append(observations, option.ObservedAt)
+	}
 	status := "ok"
 	if len(options) == 0 {
 		status = "not_found"
 	}
 	result := model.NewEnvelope(status, fmt.Sprintf("%d parking option(s) found.", len(options)), map[string]any{"options": options})
+	if len(options) != 0 {
+		observed := oldestObservation(observations...)
+		retrieved := latestRetrieval(retrievals...)
+		if retrieved == nil {
+			retrieved = model.Ptr(now)
+		}
+		age, _, _ := observationFreshness(observed, retrieved, now, maximumAge)
+		result.Sources = append(result.Sources, model.SourceProvenance{
+			Provider: "DataGrandLyon", SourceID: "parking_realtime", Dataset: "parking_availability",
+			Attribution: "Métropole de Lyon", License: "unknown",
+			ObservedAt: observed, RetrievedAt: retrieved, AgeSeconds: age,
+			Realtime: true, Stale: staleObserved,
+		})
+	}
 	if err != nil {
 		result.Warn("PARTIAL_RESULT", "parking", "Some requested parking sources are unavailable.", true)
 	}
@@ -49,6 +85,12 @@ func (a *App) ParkingOptions(ctx context.Context, input model.ParkingOptionsInpu
 		result.Warn("PARTIAL_RESULT", "parking_realtime", "No validated realtime availability is available.", true)
 	case parkingAvailabilityPartial:
 		result.Warn("PARTIAL_RESULT", "parking_realtime", "Realtime availability is incomplete.", false)
+	}
+	if missingObserved {
+		result.Warn("PARTIAL_RESULT", "parking_realtime", "Some availability values have no observation timestamp, so their age is unknown.", false)
+	}
+	if staleObserved {
+		result.Warn("STALE_DATA", "parking_realtime", fmt.Sprintf("Parking observations exceed the %d-second freshness limit.", maximumAge), false)
 	}
 	return result
 }

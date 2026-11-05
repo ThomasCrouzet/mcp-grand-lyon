@@ -387,6 +387,9 @@ func testAllToolsAndEOF(t *testing.T) {
 	if _, ok := facts["mobility"].(map[string]any); !ok {
 		t.Fatalf("briefing has no mobility facts: %#v", facts)
 	}
+	if _, ok := facts["sources"].([]any); !ok {
+		t.Fatalf("briefing facts do not retain aggregated provenance: %#v", facts)
+	}
 
 	client.close(true)
 }

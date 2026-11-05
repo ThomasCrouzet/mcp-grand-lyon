@@ -47,7 +47,7 @@ func (a *App) VelovStations(ctx context.Context, ref model.PlaceRef, radiusM flo
 	}
 	result := model.NewEnvelope("ok", fmt.Sprintf("%d Vélo'v station(s) found.", len(filtered)), map[string]any{"stations": filtered})
 	now := model.Now()
-	maximumAge := a.velovMaximumStaleSeconds(ctx)
+	maximumAge := a.maximumStaleSeconds(ctx, "velov_realtime")
 	var oldestObserved *time.Time
 	oldestAge := 0
 	missingObserved := false
@@ -73,10 +73,14 @@ func (a *App) VelovStations(ctx context.Context, ref model.PlaceRef, radiusM flo
 	if missingObserved {
 		result.Warn("PARTIAL_RESULT", "velov_realtime", "Some Vélo'v stations have no observation timestamp.", false)
 	}
+	retrieved := latestRetrieval(stationRetrieved(filtered)...)
+	if retrieved == nil {
+		retrieved = model.Ptr(now)
+	}
 	result.Sources = append(result.Sources, model.SourceProvenance{
 		Provider: "DataGrandLyon", SourceID: "velov_realtime", Dataset: "velov_realtime",
 		Attribution: "Métropole de Lyon / JCDecaux", License: "unknown",
-		ObservedAt: oldestObserved, RetrievedAt: model.Ptr(now), AgeSeconds: observedAge(oldestObserved, oldestAge),
+		ObservedAt: oldestObserved, RetrievedAt: retrieved, AgeSeconds: observedAge(oldestObserved, oldestAge),
 		Realtime: true, Stale: staleObserved,
 	})
 	if a.Store != nil {
@@ -93,20 +97,12 @@ func (a *App) VelovStations(ctx context.Context, ref model.PlaceRef, radiusM flo
 	return result
 }
 
-func (a *App) velovMaximumStaleSeconds(ctx context.Context) int {
-	const fallback = 300
-	if a.Store == nil {
-		return fallback
+func stationRetrieved(stations []model.VelovStation) []*time.Time {
+	values := make([]*time.Time, 0, len(stations))
+	for _, station := range stations {
+		values = append(values, station.RetrievedAt)
 	}
-	source, err := a.Store.GetSource(ctx, "velov_realtime")
-	if err != nil || source == nil {
-		return fallback
-	}
-	value := briefingIntValue(source["maximum_stale_seconds"])
-	if value <= 0 {
-		return fallback
-	}
-	return value
+	return values
 }
 
 func observedAge(observed *time.Time, age int) *int {

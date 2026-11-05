@@ -36,11 +36,11 @@ func testJourneyParkAndRide(t *testing.T) {
 	}
 	client = startJourneyMCP(t, "journey-park-unknown", map[string]any{"datagrandlyon/parkings.json": map[string]any{"values": unknownValues}}, nil)
 	unknown := client.callTool("lyon_trip_options", arguments)
-	assertStatus(t, unknown, "partial")
+	assertStatus(t, unknown, "unavailable")
 	assertWarningSource(t, unknown, "PARTIAL_RESULT", "parking_availability")
 	unknownOptions := objectList(t, dataObject(t, unknown), "options")
-	if len(unknownOptions) != 1 || unknownOptions[0]["availability"] != nil {
-		t.Fatalf("unknown parking availability was changed: %#v", unknownOptions)
+	if len(unknownOptions) != 1 || unknownOptions[0]["availability"] != nil || unknownOptions[0]["eligible"] != false {
+		t.Fatalf("unknown parking availability was changed or recommended: %#v", unknownOptions)
 	}
 	client.close(true)
 

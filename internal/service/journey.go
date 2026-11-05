@@ -161,6 +161,13 @@ func evaluateTripOptions(options []model.TripOption, preferences model.TripPrefe
 				reasons = append(reasons, "wheelchair accessibility is not verified")
 			}
 		}
+		if option.Mode == "park_and_ride" {
+			if option.Availability == nil {
+				reasons = append(reasons, "park-and-ride availability is unknown")
+			} else if option.AvailabilityStale {
+				reasons = append(reasons, "park-and-ride availability is stale or has no observation timestamp")
+			}
+		}
 		option.Eligible = len(reasons) == 0
 		option.IneligibilityReasons = reasons
 	}
@@ -218,10 +225,19 @@ func (app *App) appendVelovOption(ctx context.Context, envelope *model.Envelope,
 		envelope.Warn("SOURCE_UNAVAILABLE", "velov_realtime", "Velov stations are unavailable for this trip.", true)
 		return
 	}
+	originStations = append([]model.VelovStation(nil), originStations...)
+	destinationStations = append([]model.VelovStation(nil), destinationStations...)
+	setStationDistances(originStations, origin)
+	setStationDistances(destinationStations, destination)
 	originStations = filterStations(originStations, preferences.MinimumVelovBikes, true)
 	destinationStations = filterStations(destinationStations, preferences.MinimumVelovDocks, false)
+	if !app.Config.Offline {
+		maximumAge := app.maximumStaleSeconds(ctx, "velov_realtime")
+		originStations = filterFreshStations(originStations, maximumAge)
+		destinationStations = filterFreshStations(destinationStations, maximumAge)
+	}
 	if len(originStations) == 0 || len(destinationStations) == 0 {
-		envelope.Warn("PARTIAL_RESULT", "velov_realtime", "No station pair satisfies the requested availability.", false)
+		envelope.Warn("PARTIAL_RESULT", "velov_realtime", "No station pair satisfies the requested availability and freshness.", false)
 		return
 	}
 	var selectedOrigin, selectedDestination *model.VelovStation
@@ -262,6 +278,35 @@ func (app *App) appendVelovOption(ctx context.Context, envelope *model.Envelope,
 		Availability: &availability, Summary: fmt.Sprintf("Velov %s to %s", selectedOrigin.Name, selectedDestination.Name),
 		Realtime: true, Alerts: []model.TransitAlert{}, Sources: []string{"velov_realtime"},
 	})
+	if !app.Config.Offline {
+		observed := oldestObservation(selectedOrigin.ObservedAt, selectedDestination.ObservedAt)
+		retrieved := latestRetrieval(selectedOrigin.RetrievedAt, selectedDestination.RetrievedAt)
+		age, stale, _ := observationFreshness(observed, retrieved, model.Now(), app.maximumStaleSeconds(ctx, "velov_realtime"))
+		envelope.Sources = append(envelope.Sources, model.SourceProvenance{
+			Provider: "DataGrandLyon", SourceID: "velov_realtime", Dataset: "velov_realtime",
+			Attribution: "Métropole de Lyon / JCDecaux", License: "unknown",
+			ObservedAt: observed, RetrievedAt: retrieved, AgeSeconds: age, Realtime: true, Stale: stale,
+		})
+	}
+}
+
+func setStationDistances(stations []model.VelovStation, point model.Point) {
+	for index := range stations {
+		distance := model.Distance(point, model.Point{Latitude: stations[index].Latitude, Longitude: stations[index].Longitude})
+		stations[index].DistanceM = &distance
+	}
+}
+
+func filterFreshStations(stations []model.VelovStation, maximumStaleSeconds int) []model.VelovStation {
+	result := make([]model.VelovStation, 0, len(stations))
+	now := model.Now()
+	for _, station := range stations {
+		_, stale, missing := observationFreshness(station.ObservedAt, station.RetrievedAt, now, maximumStaleSeconds)
+		if !stale && !missing {
+			result = append(result, station)
+		}
+	}
+	return result
 }
 
 func filterStations(stations []model.VelovStation, minimum int, bikes bool) []model.VelovStation {
@@ -326,6 +371,7 @@ func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Env
 	duration := int(distance / 9.0)
 	availabilityScore := 0.2
 	var availability *string
+	availabilityStale := false
 	if selected.AvailableSpaces == nil {
 		envelope.Warn("PARTIAL_RESULT", "parking_availability", "Park-and-ride availability is unknown.", false)
 	} else {
@@ -335,14 +381,27 @@ func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Env
 		if *selected.AvailableSpaces > 5 {
 			availabilityScore = 0.7
 		}
+		if !app.Config.Offline {
+			_, stale, missing := observationFreshness(selected.ObservedAt, selected.RetrievedAt, model.Now(), app.maximumStaleSeconds(ctx, "parking_realtime"))
+			availabilityStale = stale || missing
+		}
 	}
 	*options = append(*options, model.TripOption{
 		Mode: "park_and_ride", Score: app.tripScore(duration, 0.7, 0.1, walking, availabilityScore), Evidence: "estimated",
 		EstimatedDurationSeconds: &duration, WalkingDistanceM: walkingDistance,
-		Availability: availability,
-		Summary:      "Park-and-ride at " + selected.Name, Realtime: selected.Realtime,
+		Availability: availability, AvailabilityStale: availabilityStale,
+		Summary: "Park-and-ride at " + selected.Name, Realtime: selected.Realtime && !availabilityStale,
 		Alerts: []model.TransitAlert{}, Sources: []string{"parking"},
 	})
+	if !app.Config.Offline {
+		age, stale, _ := observationFreshness(selected.ObservedAt, selected.RetrievedAt, model.Now(), app.maximumStaleSeconds(ctx, "parking_realtime"))
+		envelope.Sources = append(envelope.Sources, model.SourceProvenance{
+			Provider: "DataGrandLyon", SourceID: "parking", Dataset: "parking_availability",
+			Attribution: "Métropole de Lyon", License: "unknown",
+			ObservedAt: selected.ObservedAt, RetrievedAt: selected.RetrievedAt, AgeSeconds: age,
+			Realtime: selected.Realtime, Stale: stale,
+		})
+	}
 }
 
 func (app *App) appendTransitOptions(ctx context.Context, envelope *model.Envelope, options *[]model.TripOption, origin, destination model.Point, departure time.Time, preferences model.TripPreferences) {
@@ -381,6 +440,22 @@ func (app *App) appendTransitOptions(ctx context.Context, envelope *model.Envelo
 		}
 		*options = append(*options, option)
 	}
+	if !app.Config.Offline {
+		envelope.Sources = append(envelope.Sources, model.SourceProvenance{
+			Provider: "Transitous", SourceID: "transitous", Dataset: "plan",
+			Attribution: "Transitous / MOTIS", License: "unknown",
+			RetrievedAt: model.Ptr(model.Now()), Realtime: plannedRealtime(planned),
+		})
+	}
+}
+
+func plannedRealtime(options []model.TripOption) bool {
+	for _, option := range options {
+		if option.Realtime {
+			return true
+		}
+	}
+	return false
 }
 
 func appendTransitFallback(envelope *model.Envelope, options *[]model.TripOption) {

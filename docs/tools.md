@@ -57,6 +57,16 @@ Source records can include `provider`, `source_id`, `dataset`, `attribution`,
 `license`, `observed_at`, `retrieved_at`, `age_seconds`, `realtime`, and `stale`.
 Not every provider currently supplies source records.
 
+Freshness is evaluated consistently against each source's configured
+`maximum_stale_seconds`: `observed_at` is the upstream observation, `retrieved_at`
+is the fetch (cache reuse keeps the original fetch time), and `age_seconds` is
+derived from the observation. A missing observation timestamp stays `null`; it is
+never replaced by the request time and never reported as zero age. Stale or
+unobserved availability remains visible as degraded information but cannot make a
+journey option eligible or recommend a current space. Closed Vélo'v stations are
+excluded independently of their bike/dock counts. GTFS departures remain
+theoretical, carry no observation timestamp, and are never marked realtime.
+
 ## Place references
 
 A `PlaceRef` accepts exactly one of these forms:

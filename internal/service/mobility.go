@@ -107,6 +107,25 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 		}
 		data["road_events"] = events
 	}
+	retrieved := model.Ptr(model.Now())
+	for _, source := range []struct {
+		include bool
+		id      string
+		dataset string
+		attrib  string
+	}{
+		{includes["transit"], "tcl_alerts", "tcl_alerts", "SYTRAL Mobilités"},
+		{includes["accessibility"], "tcl_accessibility", "tcl_accessibility", "SYTRAL Mobilités"},
+		{includes["traffic"], "traffic", "traffic", "Métropole de Lyon"},
+		{includes["roadworks"], "road_events", "road_events", "Métropole de Lyon"},
+	} {
+		if source.include {
+			result.Sources = append(result.Sources, model.SourceProvenance{
+				Provider: "DataGrandLyon", SourceID: source.id, Dataset: source.dataset,
+				Attribution: source.attrib, License: "unknown", RetrievedAt: retrieved,
+			})
+		}
+	}
 	return result
 }
 
