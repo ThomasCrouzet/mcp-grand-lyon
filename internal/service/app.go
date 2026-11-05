@@ -68,9 +68,6 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			return nil, err
 		}
 	}
-	if cfg.Username == "" || cfg.Password == "" {
-		cfg.Offline = true
-	}
 	http := httpclient.New(cfg)
 	app := &App{Config: cfg, Store: store, HTTP: http}
 	if cfg.Offline {

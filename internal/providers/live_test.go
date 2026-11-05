@@ -74,7 +74,7 @@ func testLiveWithStore(t *testing.T, handler http.Handler, store *storage.Store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Config{VerifyTLS: true, MaxParallel: 4, ConnectTimeout: time.Second, ReadTimeout: time.Second}
+	cfg := config.Config{VerifyTLS: true, Username: "fixture-user", Password: "fixture-password", MaxParallel: 4, ConnectTimeout: time.Second, ReadTimeout: time.Second}
 	client := httpclient.NewWithTransport(cfg, mappedTransport{target: target, base: server.Client().Transport})
 	t.Cleanup(func() { _ = client.Close() })
 	return NewLive(client, store, cfg)
@@ -727,7 +727,7 @@ func TestLiveDeparturesUseResolvedStopCoordinates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Config{VerifyTLS: true, MaxParallel: 2, ConnectTimeout: time.Second, ReadTimeout: time.Second}
+	cfg := config.Config{VerifyTLS: true, Username: "fixture-user", Password: "fixture-password", MaxParallel: 2, ConnectTimeout: time.Second, ReadTimeout: time.Second}
 	client := httpclient.NewWithTransport(cfg, mappedTransport{target: target, base: server.Client().Transport})
 	t.Cleanup(func() { _ = client.Close() })
 	departures, err := NewLive(client, store, cfg).Departures(ctx, stop.ID, "A", "", 4)
@@ -1062,7 +1062,7 @@ func TestCatalogScanFullResolvesOnlyUnambiguousSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Config{VerifyTLS: true, MaxParallel: 2, ConnectTimeout: time.Second, ReadTimeout: time.Second}
+	cfg := config.Config{VerifyTLS: true, Username: "fixture-user", Password: "fixture-password", MaxParallel: 2, ConnectTimeout: time.Second, ReadTimeout: time.Second}
 	client := httpclient.NewWithTransport(cfg, mappedTransport{target: target, base: server.Client().Transport})
 	t.Cleanup(func() { _ = client.Close() })
 	live := NewLive(client, store, cfg)
@@ -1124,7 +1124,7 @@ func TestCatalogValidateProbesOnlyResolvedRegistrySources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Config{VerifyTLS: true, MaxParallel: 2, ConnectTimeout: time.Second, ReadTimeout: time.Second}
+	cfg := config.Config{VerifyTLS: true, Username: "fixture-user", Password: "fixture-password", MaxParallel: 2, ConnectTimeout: time.Second, ReadTimeout: time.Second}
 	client := httpclient.NewWithTransport(cfg, mappedTransport{target: target, base: server.Client().Transport})
 	t.Cleanup(func() { _ = client.Close() })
 	result, err := NewLive(client, store, cfg).CatalogValidate(ctx)
@@ -1267,11 +1267,11 @@ func TestCatalogFullReportsPartialAndKeepsExplicitTable(t *testing.T) {
 func TestJSONResponseBodyIsClosedByHTTPClient(t *testing.T) {
 	t.Parallel()
 	var closed atomic.Bool
-	client := httpclient.NewWithTransport(config.Config{VerifyTLS: true, MaxParallel: 1, ConnectTimeout: time.Second, ReadTimeout: time.Second}, roundTripFunc(func(*http.Request) (*http.Response, error) {
+	client := httpclient.NewWithTransport(config.Config{VerifyTLS: true, Username: "fixture-user", Password: "fixture-password", MaxParallel: 1, ConnectTimeout: time.Second, ReadTimeout: time.Second}, roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: &closeReader{Reader: strings.NewReader(`{"values":[]}`), closed: &closed}}, nil
 	}))
 	t.Cleanup(func() { _ = client.Close() })
-	live := NewLive(client, nil, config.Config{})
+	live := NewLive(client, nil, config.Config{Username: "fixture-user", Password: "fixture-password"})
 	_, err := live.queryTable(context.Background(), "rdata", "safe.table", 1)
 	if err != nil {
 		t.Fatal(err)
