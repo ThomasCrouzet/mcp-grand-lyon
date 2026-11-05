@@ -247,9 +247,13 @@ type TripOption struct {
 }
 
 type BriefingChange struct {
-	Key      string  `json:"key" yaml:"key"`
-	Previous *string `json:"previous" yaml:"previous"`
-	Current  *string `json:"current" yaml:"current"`
+	Key        string     `json:"key" yaml:"key"`
+	Kind       string     `json:"kind" yaml:"kind"`
+	Message    string     `json:"message" yaml:"message"`
+	Previous   *string    `json:"previous" yaml:"previous"`
+	Current    *string    `json:"current" yaml:"current"`
+	Source     *string    `json:"source" yaml:"source"`
+	ObservedAt *time.Time `json:"observed_at" yaml:"observed_at"`
 }
 
 type BriefingResult struct {

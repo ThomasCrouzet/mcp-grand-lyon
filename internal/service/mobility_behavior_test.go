@@ -89,11 +89,11 @@ func TestCompareBriefingFactsReadsNestedSnapshot(t *testing.T) {
 		"mobility": map[string]any{"alerts": []any{map[string]any{"id": "new"}}},
 	}
 
-	changes := compareBriefingFacts(previous, current)
-	if len(changes) != 1 || changes[0].Key != "mobility" {
+	changes, _ := compareBriefingFacts(previous, current)
+	if len(changes) != 2 || changes[0].Key != "mobility:new" || changes[1].Key != "mobility:old" {
 		t.Fatalf("changes = %#v", changes)
 	}
-	if equal := compareBriefingFacts(map[string]any{"facts": current}, current); len(equal) != 0 {
+	if equal, _ := compareBriefingFacts(map[string]any{"facts": current}, current); len(equal) != 0 {
 		t.Fatalf("equal facts produced changes: %#v", equal)
 	}
 }
