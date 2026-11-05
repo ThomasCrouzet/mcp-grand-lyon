@@ -68,19 +68,25 @@ func testJourneyTransitousDeadline(t *testing.T) {
 	client := startJourneyMCP(t, "journey-transitous", nil, map[string]string{"TRANSITOUS_ENABLED": "true"})
 	arguments := journeyArguments([]string{"tcl"})
 	result := client.callTool("lyon_trip_options", arguments)
-	assertStatus(t, result, "partial")
+	assertStatus(t, result, "unavailable")
 	assertWarningSource(t, result, "ROUTING_UNAVAILABLE", "journey_planner")
 	options := objectList(t, dataObject(t, result), "options")
 	if len(options) != 1 || options[0]["mode"] != "tcl" || options[0]["estimated_duration_seconds"] != nil || options[0]["arrival_at"] != nil {
 		t.Fatalf("fixture routing fallback claimed timing: %#v", options)
 	}
+	if options[0]["eligible"] != false || options[0]["walking_distance_m"] != nil {
+		t.Fatalf("fixture routing fallback claimed eligibility: %#v", options[0])
+	}
 
 	withDeadline := mapsClone(arguments)
 	withDeadline["arrival_before"] = "2026-07-20T09:00:00+02:00"
 	deadline := client.callTool("lyon_trip_options", withDeadline)
-	assertStatus(t, deadline, "not_found")
+	assertStatus(t, deadline, "unavailable")
 	assertWarningSource(t, deadline, "ROUTING_UNAVAILABLE", "journey_planner")
-	if options := objectList(t, dataObject(t, deadline), "options"); len(options) != 0 {
+	if dataObject(t, deadline)["recommended_mode"] != nil {
+		t.Fatalf("untimed routing fallback was recommended: %#v", deadline)
+	}
+	if options := objectList(t, dataObject(t, deadline), "options"); len(options) != 1 || options[0]["eligible"] != false {
 		t.Fatalf("untimed routing fallback met a deadline: %#v", options)
 	}
 	client.close(true)

@@ -101,11 +101,12 @@ func TestTripOptionsEnforcesPublicConstraints(t *testing.T) {
 	departure := time.Date(2026, 7, 20, 8, 0, 0, 0, model.Paris)
 	deadline := departure.Add(11 * time.Minute)
 	duration := 10 * 60
+	walking := 0
 	accessible := "accessible"
 	provider := &semanticProvider{plan: func(context.Context, model.Point, model.Point, time.Time, []string, model.TripPreferences) ([]model.TripOption, error) {
 		return []model.TripOption{
-			{Mode: "tcl", Score: 0.9, EstimatedDurationSeconds: &duration, Accessibility: &accessible, Alerts: []model.TransitAlert{{ID: "incident", Title: "Line interrupted"}}, Summary: "disrupted"},
-			{Mode: "tcl", Score: 0.7, EstimatedDurationSeconds: &duration, Accessibility: &accessible, Alerts: []model.TransitAlert{}, Summary: "verified"},
+			{Mode: "tcl", Score: 0.9, EstimatedDurationSeconds: &duration, WalkingDistanceM: &walking, Accessibility: &accessible, Alerts: []model.TransitAlert{{ID: "incident", Title: "Line interrupted"}}, Summary: "disrupted"},
+			{Mode: "tcl", Score: 0.7, EstimatedDurationSeconds: &duration, WalkingDistanceM: &walking, Accessibility: &accessible, Alerts: []model.TransitAlert{}, Summary: "verified"},
 		}, nil
 	}}
 	app := serviceTestApp(t, provider)
@@ -119,10 +120,13 @@ func TestTripOptionsEnforcesPublicConstraints(t *testing.T) {
 		t.Fatalf("status=%s warnings=%+v", envelope.Status, envelope.Warnings)
 	}
 	options := envelope.Data["options"].([]model.TripOption)
-	if len(options) != 1 || options[0].Summary != "verified" || options[0].ArrivalAt == nil {
+	if len(options) != 2 || !options[0].Eligible || options[0].Summary != "verified" || options[1].Eligible {
 		t.Fatalf("options=%+v", options)
 	}
-	if options[0].ArrivalAt.After(deadline) {
+	if envelope.Data["recommended_mode"] != "tcl" {
+		t.Fatalf("recommended mode=%v", envelope.Data["recommended_mode"])
+	}
+	if options[0].ArrivalAt == nil || options[0].ArrivalAt.After(deadline) {
 		t.Fatalf("arrival=%s deadline=%s", options[0].ArrivalAt, deadline)
 	}
 
