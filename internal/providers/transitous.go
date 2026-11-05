@@ -140,7 +140,7 @@ func parseTransitousLegs(entry map[string]any) ([]model.TripLeg, int, bool, int,
 			return nil, 0, false, 0, 0, nil, false
 		}
 		leg := model.TripLeg{
-			Mode: mode, Operator: providerJSONText(first(item, "agencyName", "agency", "operator")),
+			Mode: mode, Evidence: "calculated", Operator: providerJSONText(first(item, "agencyName", "agency", "operator")),
 			Line: providerJSONText(first(item, "routeShortName", "route", "displayName", "routeLongName")),
 			From: transitEndpointName(first(item, "from")), To: transitEndpointName(first(item, "to")),
 			StartAt: start, EndAt: end, Realtime: legRealtime,

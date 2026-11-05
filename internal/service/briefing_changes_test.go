@@ -42,7 +42,7 @@ func TestCompareBriefingFactsUsesStableIdentities(t *testing.T) {
 	if cancelled.Kind != "updated" || cancelled.Message != "Departure was cancelled." {
 		t.Fatalf("cancelled change = %#v", cancelled)
 	}
-	parking := byKey["journey:park_and_ride"]
+	parking := byKey["journey:park_and_ride|"]
 	if parking.Kind != "updated" || parking.Previous == nil || parking.Current == nil ||
 		parking.Message != "Availability changed from 5 spaces to 0 spaces." {
 		t.Fatalf("parking change = %#v", parking)

@@ -241,10 +241,15 @@ briefings:
 	if len(changes) == 0 {
 		t.Fatalf("parking transition produced no changes: %#v", third)
 	}
-	parkingChange := indexByField(changes, "key")["journey:park_and_ride"]
+	parkingChange := map[string]any(nil)
+	for _, change := range changes {
+		if strings.HasPrefix(stringValue(change["key"]), "journey:park_and_ride|") {
+			parkingChange = change
+		}
+	}
 	if parkingChange == nil || parkingChange["kind"] != "updated" ||
 		!strings.Contains(stringValue(parkingChange["message"]), "120 spaces") ||
-		!strings.Contains(stringValue(parkingChange["message"]), "5 spaces") {
+		!strings.Contains(stringValue(parkingChange["message"]), "0 spaces") {
 		t.Fatalf("parking change = %#v", parkingChange)
 	}
 	client.close(true)

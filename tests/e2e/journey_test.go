@@ -24,10 +24,15 @@ func testJourneyParkAndRide(t *testing.T) {
 	client := startJourneyMCP(t, "journey-park-available", map[string]any{"datagrandlyon/parkings.json": map[string]any{"values": available}}, nil)
 	arguments := journeyArguments([]string{"park_and_ride"})
 	result := client.callTool("lyon_trip_options", arguments)
-	assertStatus(t, result, "partial")
-	options := objectList(t, dataObject(t, result), "options")
-	if len(options) != 1 || options[0]["mode"] != "park_and_ride" || options[0]["summary"] != "Park-and-ride at Available P+R" || options[0]["availability"] != "12 spaces" {
-		t.Fatalf("available park-and-ride was not selected: %#v", options)
+	assertStatus(t, result, "unavailable")
+	assertWarningSource(t, result, "ROUTING_UNAVAILABLE", "park_and_ride")
+	if dataObject(t, result)["recommended_mode"] != nil {
+		t.Fatalf("incomplete P+R chain was recommended: %#v", result)
+	}
+	options := indexByField(objectList(t, dataObject(t, result), "options"), "summary")
+	selected := options["Park-and-ride at Available P+R; transit connection unavailable"]
+	if selected == nil || selected["availability"] != "12 spaces" || selected["eligible"] != false {
+		t.Fatalf("parking information was not preserved: %#v", options)
 	}
 	client.close(true)
 
@@ -49,9 +54,9 @@ func testJourneyParkAndRide(t *testing.T) {
 	}
 	client = startJourneyMCP(t, "journey-park-full", map[string]any{"datagrandlyon/parkings.json": map[string]any{"values": fullValues}}, nil)
 	full := client.callTool("lyon_trip_options", arguments)
-	assertStatus(t, full, "not_found")
-	if options := objectList(t, dataObject(t, full), "options"); len(options) != 0 {
-		t.Fatalf("full parking was retained: %#v", options)
+	assertStatus(t, full, "unavailable")
+	if dataObject(t, full)["recommended_mode"] != nil {
+		t.Fatalf("full parking was recommended: %#v", full)
 	}
 
 	missingArguments := mapsClone(arguments)
