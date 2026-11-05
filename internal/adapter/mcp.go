@@ -24,7 +24,11 @@ func New(app *service.App) (*mcp.Server, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &mcp.CallToolResult{StructuredContent: result, Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}, nil
+			return &mcp.CallToolResult{
+				IsError:           service.IsExecutionError(result.Status),
+				StructuredContent: result,
+				Content:           []mcp.Content{&mcp.TextContent{Text: string(data)}},
+			}, nil
 		})
 	}
 	return server, nil

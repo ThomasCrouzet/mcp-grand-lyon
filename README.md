@@ -58,6 +58,7 @@ See the [tool reference](docs/tools.md) for arguments, defaults, filters, and li
 
 Every tool returns an envelope with `status`, `summary`, `data`, `sources`, `warnings`, and `degraded`, plus a schema version, request ID, and generation time.
 Statuses are `ok`, `partial`, `not_found`, `ambiguous`, `unavailable`, or `invalid_request`.
+MCP marks `invalid_request` and `unavailable` results with `isError=true` while keeping the same domain envelope; `partial`, `ambiguous`, and legitimate empty results remain successful. Invalid arguments include an actionable `data.error` with a stable code, field, and expected constraint.
 A successful MCP exchange can contain an unavailable domain result: inspect warnings, source dates, and `realtime` flags before relying on it.
 
 - **Input validation.** Schemas reject unknown fields and invalid values. A place reference uses exactly one of a query, place ID, coordinate pair, or profile-place name.

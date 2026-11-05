@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -20,6 +21,33 @@ type ToolDefinition struct {
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
 	resolved    *jsonschema.Resolved
+}
+
+type validationDetail struct {
+	Code     string
+	Field    string
+	Expected string
+}
+
+type fieldError struct {
+	field string
+	err   error
+}
+
+func (failure fieldError) Error() string { return failure.field + ": " + failure.err.Error() }
+
+type inputValidationError struct {
+	detail  validationDetail
+	message string
+}
+
+func (failure *inputValidationError) Error() string { return failure.message }
+
+// IsExecutionError maps domain outcomes to the MCP execution status.
+// Invalid arguments and complete execution failures set isError; partial,
+// ambiguous, and legitimate empty/not-found results stay successful.
+func IsExecutionError(status string) bool {
+	return status == "invalid_request" || status == "unavailable"
 }
 
 var definitions = sync.OnceValues(func() (map[string]ToolDefinition, error) {
@@ -59,27 +87,44 @@ func Tools() ([]ToolDefinition, error) {
 }
 
 func validatePlaces(value reflect.Value) error {
+	return validatePlacesAt(value, "")
+}
+
+func validatePlacesAt(value reflect.Value, path string) error {
 	if value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			return nil
 		}
-		return validatePlaces(value.Elem())
+		return validatePlacesAt(value.Elem(), path)
 	}
 	if value.Type() == reflect.TypeFor[model.PlaceRef]() {
-		return value.Interface().(model.PlaceRef).Validate()
+		if err := value.Interface().(model.PlaceRef).Validate(); err != nil {
+			return fieldError{field: path, err: err}
+		}
+		return nil
 	}
 	switch value.Kind() {
 	case reflect.Struct:
 		for i := 0; i < value.NumField(); i++ {
-			if value.Type().Field(i).IsExported() {
-				if err := validatePlaces(value.Field(i)); err != nil {
-					return err
-				}
+			if !value.Type().Field(i).IsExported() {
+				continue
+			}
+			name := strings.Split(value.Type().Field(i).Tag.Get("json"), ",")[0]
+			if name == "" || name == "-" {
+				name = value.Type().Field(i).Name
+			}
+			childPath := name
+			if path != "" {
+				childPath = path + "." + name
+			}
+			if err := validatePlacesAt(value.Field(i), childPath); err != nil {
+				return err
 			}
 		}
 	case reflect.Slice:
 		for i := 0; i < value.Len(); i++ {
-			if err := validatePlaces(value.Index(i)); err != nil {
+			childPath := fmt.Sprintf("%s[%d]", path, i)
+			if err := validatePlacesAt(value.Index(i), childPath); err != nil {
 				return err
 			}
 		}
@@ -92,15 +137,83 @@ func decodeInput[T any](raw []byte) (T, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
-		return input, errors.New("invalid input types or timestamp; use RFC3339 with a UTC offset")
+		return input, &inputValidationError{
+			detail:  validationDetail{Code: "invalid_argument", Expected: "use the declared JSON types and RFC3339 timestamps with a UTC offset"},
+			message: "invalid input types or timestamp; use RFC3339 with a UTC offset",
+		}
 	}
-	return input, validatePlaces(reflect.ValueOf(input))
+	if err := validatePlaces(reflect.ValueOf(input)); err != nil {
+		detail := validationDetail{Code: "invalid_place_reference", Expected: placeConstraint(err.Error())}
+		message := err.Error()
+		var failure fieldError
+		if errors.As(err, &failure) {
+			detail.Field = failure.field
+		}
+		return input, &inputValidationError{detail: detail, message: message}
+	}
+	return input, nil
+}
+
+func placeConstraint(message string) string {
+	switch {
+	case strings.Contains(message, "coordinates are outside"):
+		return "latitude must be between -90 and 90 and longitude between -180 and 180"
+	case strings.Contains(message, "both required"):
+		return "provide both latitude and longitude"
+	case strings.Contains(message, "exactly one place mode"):
+		return "provide exactly one of place_id, query, coordinates, or profile_place"
+	case strings.Contains(message, "too long"):
+		return "place_id and query accept at most 200 characters; profile_place at most 64"
+	default:
+		return "use a supported place reference"
+	}
+}
+
+func invalidRequestEnvelope(detail validationDetail, message string, data map[string]any) model.Envelope {
+	envelope := model.NewEnvelope("invalid_request", message, data)
+	if detail.Code == "" {
+		detail.Code = "invalid_request"
+	}
+	if detail.Expected == "" {
+		detail.Expected = "correct the request and retry"
+	}
+	envelope.Data["error"] = map[string]any{
+		"code": detail.Code, "field": detail.Field, "expected": detail.Expected, "message": message,
+	}
+	envelope.Warn("INVALID_REQUEST", "request_validation", message, false)
+	envelope.Status = "invalid_request"
+	return envelope
+}
+
+func attachErrorDetail(envelope *model.Envelope) {
+	if envelope.Status != "invalid_request" && envelope.Status != "unavailable" {
+		return
+	}
+	if envelope.Data == nil {
+		envelope.Data = map[string]any{}
+	}
+	if _, exists := envelope.Data["error"]; exists {
+		return
+	}
+	code := "invalid_request"
+	expected := "correct the request and retry"
+	if envelope.Status == "unavailable" {
+		code = "execution_failed"
+		expected = "retry later or check source availability and diagnostics"
+	}
+	envelope.Data["error"] = map[string]any{
+		"code": code, "field": "", "expected": expected, "message": envelope.Summary,
+	}
 }
 
 func invoke[T any](ctx context.Context, raw []byte, handler func(context.Context, T) model.Envelope) model.Envelope {
 	input, err := decodeInput[T](raw)
 	if err != nil {
-		return model.NewEnvelope("invalid_request", err.Error(), nil)
+		var failure *inputValidationError
+		if errors.As(err, &failure) {
+			return invalidRequestEnvelope(failure.detail, failure.message, nil)
+		}
+		return invalidRequestEnvelope(validationDetail{Code: "invalid_request"}, err.Error(), nil)
 	}
 	return handler(ctx, input)
 }
@@ -126,6 +239,7 @@ func applyTripPreferenceDefaults(values map[string]any) {
 
 func (app *App) Call(ctx context.Context, name string, raw json.RawMessage) (result model.Envelope) {
 	defer func() {
+		attachErrorDetail(&result)
 		if app.Config.Offline && result.Status != "invalid_request" {
 			markOfflineFixture(&result)
 		}
@@ -136,30 +250,33 @@ func (app *App) Call(ctx context.Context, name string, raw json.RawMessage) (res
 	}
 	tool, exists := tools[name]
 	if !exists {
-		return model.NewEnvelope("invalid_request", "Unknown tool.", nil)
+		return invalidRequestEnvelope(validationDetail{Code: "unknown_tool", Field: "name", Expected: "use a tool advertised by tools/list"}, "Unknown tool.", nil)
 	}
 	if len(raw) > 128*1024 {
-		return model.NewEnvelope("invalid_request", "Request arguments exceed the size limit.", nil)
+		return invalidRequestEnvelope(validationDetail{Code: "request_too_large", Expected: "request arguments must stay below 128 KiB"}, "Request arguments exceed the size limit.", nil)
 	}
 	var values map[string]any
 	if len(raw) == 0 {
 		raw = json.RawMessage(`{}`)
 	}
 	if err = json.Unmarshal(raw, &values); err != nil || values == nil {
-		return model.NewEnvelope("invalid_request", "Request arguments must be a JSON object.", nil)
+		return invalidRequestEnvelope(validationDetail{Code: "invalid_arguments", Expected: "send a JSON object as tool arguments"}, "Request arguments must be a JSON object.", nil)
 	}
 	if err = tool.resolved.Validate(values); err != nil {
-		return model.NewEnvelope("invalid_request", "Arguments do not match the tool schema.", nil)
+		message := err.Error()
+		return invalidRequestEnvelope(validationDetail{
+			Code: "invalid_arguments", Field: schemaErrorField(message), Expected: schemaErrorExpectation(message),
+		}, message, nil)
 	}
 	if err = tool.resolved.ApplyDefaults(&values); err != nil {
-		return model.NewEnvelope("invalid_request", "Cannot apply tool defaults.", nil)
+		return invalidRequestEnvelope(validationDetail{Code: "invalid_arguments", Expected: "use values accepted by the tool schema"}, "Cannot apply tool defaults.", nil)
 	}
 	if name == "lyon_trip_options" {
 		applyTripPreferenceDefaults(values)
 	}
 	raw, err = json.Marshal(values)
 	if err != nil {
-		return model.NewEnvelope("invalid_request", "Invalid JSON arguments.", nil)
+		return invalidRequestEnvelope(validationDetail{Code: "invalid_arguments", Expected: "send valid JSON values"}, "Invalid JSON arguments.", nil)
 	}
 	switch name {
 	case "lyon_resolve_place":
@@ -183,7 +300,46 @@ func (app *App) Call(ctx context.Context, name string, raw json.RawMessage) (res
 	case "lyon_personal_briefing":
 		return invoke(ctx, raw, app.PersonalBriefing)
 	}
-	return model.NewEnvelope("invalid_request", "Unknown tool.", nil)
+	return invalidRequestEnvelope(validationDetail{Code: "unknown_tool", Field: "name", Expected: "use a tool advertised by tools/list"}, "Unknown tool.", nil)
+}
+
+func schemaErrorField(message string) string {
+	const marker = "/properties/"
+	field := ""
+	for {
+		index := strings.Index(message, marker)
+		if index < 0 {
+			break
+		}
+		message = message[index+len(marker):]
+		end := strings.IndexAny(message, "/:")
+		if end < 0 {
+			end = len(message)
+		}
+		if candidate := message[:end]; candidate != "" && candidate != "$defs" {
+			field = candidate
+		}
+	}
+	return field
+}
+
+func schemaErrorExpectation(message string) string {
+	switch {
+	case strings.Contains(message, "unexpected additional properties"):
+		return "remove unsupported fields"
+	case strings.Contains(message, "minimum:"):
+		return "use a value at or above the schema minimum"
+	case strings.Contains(message, "maximum:"):
+		return "use a value at or below the schema maximum"
+	case strings.Contains(message, "required"):
+		return "provide every required field"
+	case strings.Contains(message, "enum"):
+		return "use one of the supported values"
+	case strings.Contains(message, "type:"):
+		return "use the JSON type declared by the schema"
+	default:
+		return "value must satisfy the tool input schema"
+	}
 }
 
 func markOfflineFixture(result *model.Envelope) {

@@ -114,12 +114,10 @@ func callToolArguments(t *testing.T, client *mcpProcess, name string, arguments 
 	if err := json.Unmarshal(raw, &call); err != nil {
 		t.Fatalf("decode %s result: %v", name, err)
 	}
-	if call.IsError {
-		t.Fatalf("%s returned protocol error content: %s", name, raw)
-	}
 	if call.StructuredContent == nil {
 		t.Fatalf("%s returned no structured content: %s", name, raw)
 	}
+	assertExecutionStatus(t, name, call.IsError, call.StructuredContent)
 	return call.StructuredContent
 }
 

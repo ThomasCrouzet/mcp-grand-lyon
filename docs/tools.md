@@ -25,7 +25,29 @@ Envelope summaries use concise status text.
 
 `status` is one of `ok`, `partial`, `not_found`, `ambiguous`, `unavailable`, or
 `invalid_request`. Read `warnings` and source provenance before using incomplete
-results. A successful protocol response can contain an unavailable domain result.
+results.
+
+The MCP result sets `isError=true` for `invalid_request` and `unavailable`.
+Those cases keep their domain envelope in `structuredContent` and in the JSON text
+content; they are tool execution errors, not JSON-RPC protocol errors.
+`ok`, `partial`, `ambiguous`, and `not_found` stay `isError=false` because the
+request executed normally. Unknown tools and malformed JSON-RPC frames keep the
+SDK protocol-error path.
+
+Invalid arguments and complete failures include `data.error`:
+
+```json
+{
+  "code": "invalid_place_reference",
+  "field": "destination",
+  "expected": "provide exactly one of place_id, query, coordinates, or profile_place",
+  "message": "destination: exactly one place mode is required"
+}
+```
+
+`code` is stable for client branching; `field` is a JSON path when known, and
+`expected` states the constraint or supported shape. Error messages never include
+credentials.
 
 Offline fixture results include an `OFFLINE_FIXTURE` warning and `degraded=true`.
 Their source provider is `Fixtures`, with dataset `offline_demo`.
