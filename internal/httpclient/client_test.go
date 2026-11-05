@@ -538,3 +538,173 @@ func TestOfflineModeDoesNotReachTransport(t *testing.T) {
 		t.Fatalf("transport calls = %d, want 0", calls.Load())
 	}
 }
+
+func TestGetCoalescesIdenticalInFlightReads(t *testing.T) {
+	t.Parallel()
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if calls.Add(1) == 1 {
+			started <- struct{}{}
+		}
+		<-release
+		_, _ = writer.Write([]byte("shared"))
+	})
+	client := NewWithTransport(testConfig(), fixtureTransport(t, handler))
+	t.Cleanup(func() { _ = client.Close() })
+	rawURL := "https://data.grandlyon.com/shared"
+	type result struct {
+		body string
+		err  error
+	}
+	results := make(chan result, 2)
+	go func() {
+		response, err := client.Get(context.Background(), rawURL, true, 32)
+		if err != nil {
+			results <- result{err: err}
+			return
+		}
+		results <- result{body: string(response.Body)}
+	}()
+	<-started
+	go func() {
+		response, err := client.Get(context.Background(), rawURL, true, 32)
+		if err != nil {
+			results <- result{err: err}
+			return
+		}
+		results <- result{body: string(response.Body)}
+	}()
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	for index := 0; index < 2; index++ {
+		value := <-results
+		if value.err != nil || value.body != "shared" {
+			t.Fatalf("result = %#v", value)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestGetCancellationDoesNotCancelOtherWaiters(t *testing.T) {
+	t.Parallel()
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if calls.Add(1) == 1 {
+			started <- struct{}{}
+		}
+		<-release
+		_, _ = writer.Write([]byte("shared"))
+	})
+	client := NewWithTransport(testConfig(), fixtureTransport(t, handler))
+	t.Cleanup(func() { _ = client.Close() })
+	rawURL := "https://data.grandlyon.com/cancel-shared"
+	ctx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		_, err := client.Get(ctx, rawURL, true, 32)
+		first <- err
+	}()
+	<-started
+	second := make(chan error, 1)
+	go func() {
+		response, err := client.Get(context.Background(), rawURL, true, 32)
+		if err == nil && string(response.Body) != "shared" {
+			err = errors.New("unexpected body")
+		}
+		second <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		client.flightsMu.Lock()
+		waiters := 0
+		for _, flight := range client.flights {
+			if flight.waiters > waiters {
+				waiters = flight.waiters
+			}
+		}
+		client.flightsMu.Unlock()
+		if waiters >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("second caller did not join the shared flight")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first error = %v", err)
+	}
+	close(release)
+	if err := <-second; err != nil {
+		t.Fatalf("second waiter failed: %v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls.Load())
+	}
+}
+
+func TestGetHonorsBoundedRetryAfter(t *testing.T) {
+	t.Parallel()
+	var rateCalls atomic.Int32
+	now := time.Now().UTC()
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/retry-seconds":
+			if rateCalls.Add(1) == 1 {
+				writer.Header().Set("Retry-After", "0")
+				writer.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			_, _ = writer.Write([]byte("ok"))
+		case "/retry-date":
+			if rateCalls.Add(1) == 2 {
+				writer.Header().Set("Retry-After", now.Add(-time.Minute).Format(http.TimeFormat))
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			_, _ = writer.Write([]byte("ok"))
+		case "/retry-too-long":
+			writer.Header().Set("Retry-After", "5")
+			writer.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			http.NotFound(writer, request)
+		}
+	})
+	client := NewWithTransport(testConfig(), fixtureTransport(t, handler))
+	t.Cleanup(func() { _ = client.Close() })
+	if response, err := client.Get(context.Background(), "https://data.grandlyon.com/retry-seconds", false, 32); err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("seconds retry = (%v, %v)", response, err)
+	}
+	if response, err := client.Get(context.Background(), "https://data.grandlyon.com/retry-date", false, 32); err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("date retry = (%v, %v)", response, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := client.Get(ctx, "https://data.grandlyon.com/retry-too-long", false, 32); !errors.Is(err, ErrRetryBudget) {
+		t.Fatalf("over-budget retry error = %v", err)
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	if delay, ok := parseRetryAfter("3", now); !ok || delay != 3*time.Second {
+		t.Fatalf("seconds = %v, %v", delay, ok)
+	}
+	if delay, ok := parseRetryAfter(now.Add(time.Minute).Format(http.TimeFormat), now); !ok || delay != time.Minute {
+		t.Fatalf("date = %v, %v", delay, ok)
+	}
+	if delay, ok := parseRetryAfter(now.Add(-time.Minute).Format(http.TimeFormat), now); !ok || delay != 0 {
+		t.Fatalf("past date = %v, %v", delay, ok)
+	}
+	if _, ok := parseRetryAfter("invalid", now); ok {
+		t.Fatal("invalid header was accepted")
+	}
+}

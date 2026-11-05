@@ -7,6 +7,7 @@ places:
 network:
   connect_timeout_seconds: 5
   read_timeout_seconds: 20
+  tool_timeout_seconds: 15
   verify_tls: true
 journey_scoring:
   duration: 0.35

@@ -65,6 +65,7 @@ Windows uses filesystem ACLs instead of POSIX mode bits.
 | `GRAND_LYON_MCP_VERIFY_TLS` | Enable TLS certificate verification |
 | `GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS` | HTTP connection timeout |
 | `GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS` | HTTP response timeout |
+| `GRAND_LYON_MCP_TOOL_TIMEOUT_SECONDS` | Total budget for one tool execution |
 | `GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS` | Maximum concurrent outbound requests |
 | `GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD` | Validated compatibility value from 0 through 100 |
 | `DATAGRANDLYON_USERNAME` | DataGrandLyon account name |
@@ -74,6 +75,10 @@ Windows uses filesystem ACLs instead of POSIX mode bits.
 
 `settings.yaml` supports runtime, place matching, network, and journey scoring controls.
 Runtime fields also include `data_dir`, `db_path`, `fixtures_dir`, `log_level`, `transitous_enabled`, and `transitous_base_url`.
+`network.tool_timeout_seconds` bounds one complete tool execution; it never extends an earlier caller deadline.
+Independent mobility branches run concurrently within `max_parallel_requests`, while output order and provenance stay deterministic.
+Identical in-flight HTTP reads are coalesced per URL, parameters, and credential identity; one caller's cancellation does not cancel other waiters.
+`Retry-After` delay-seconds and HTTP-date values are honored within the remaining budget; an over-budget wait returns an explicit limitation instead of retrying early.
 Journey scoring weights must each use values from zero through one.
 Their sum must equal one.
 Numeric settings reject `NaN` and infinite values.

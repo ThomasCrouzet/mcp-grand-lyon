@@ -252,8 +252,16 @@ func applyTripPreferenceDefaults(values map[string]any) {
 }
 
 func (app *App) Call(ctx context.Context, name string, raw json.RawMessage) (result model.Envelope) {
+	if app.Config.ToolTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, app.Config.ToolTimeout)
+		defer cancel()
+	}
 	defer func() {
 		attachErrorDetail(&result)
+		if result.Status != "invalid_request" && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			result.Warn("TOOL_TIMEOUT", "tool_execution", "The tool execution budget expired; completed branches are retained.", true)
+		}
 		if app.Config.Offline && result.Status != "invalid_request" {
 			markOfflineFixture(&result)
 		}

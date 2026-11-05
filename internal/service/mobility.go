@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/model"
 )
@@ -30,17 +31,80 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 		return result
 	}
 	includes := mobilityStringSet(input.Include)
+	areaLabels, areaPoints, unresolved := a.resolveMobilityAreas(ctx, input.Areas)
+	type branchResult struct {
+		alerts         []model.TransitAlert
+		alertsErr      error
+		incidents      []model.AccessibilityIncident
+		incidentsErr   error
+		conditions     []model.TrafficCondition
+		trafficErr     error
+		trafficBlocked bool
+		events         []model.RoadEvent
+		eventsErr      error
+		roadBlocked    bool
+	}
+	branch := branchResult{}
+	branch.trafficBlocked = false
+	branch.roadBlocked = len(input.Areas) != 0 && len(areaPoints) == 0
+	limit := a.Config.MaxParallel
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 4 {
+		limit = 4
+	}
+	sem := make(chan struct{}, limit)
+	var waitGroup sync.WaitGroup
+	run := func(operation func()) {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			operation()
+		}()
+	}
 	if includes["transit"] {
-		alerts, err := a.Provider.Alerts(ctx, input.Lines)
-		if err != nil {
-			if len(alerts) == 0 {
+		run(func() { branch.alerts, branch.alertsErr = a.Provider.Alerts(ctx, input.Lines) })
+	}
+	if includes["accessibility"] {
+		run(func() { branch.incidents, branch.incidentsErr = a.Provider.Incidents(ctx, input.Lines) })
+	}
+	if includes["traffic"] {
+		run(func() {
+			labels := areaLabels
+			if len(labels) == 0 {
+				labels = []string{""}
+			}
+			for _, label := range labels {
+				values, err := a.Provider.Traffic(ctx, label)
+				if err != nil {
+					branch.trafficErr = err
+					continue
+				}
+				branch.conditions = append(branch.conditions, values...)
+			}
+		})
+	}
+	if includes["roadworks"] && !branch.roadBlocked {
+		run(func() { branch.events, branch.eventsErr = a.Provider.RoadEvents(ctx, "") })
+	}
+	waitGroup.Wait()
+
+	for _, ref := range unresolved {
+		result.Warn("PLACE_NOT_FOUND", "areas", "Mobility area could not be resolved: "+mobilityRefLabel(ref)+".", false)
+	}
+	if includes["transit"] {
+		if branch.alertsErr != nil {
+			if len(branch.alerts) == 0 {
 				result.Warn("SOURCE_UNAVAILABLE", "tcl_alerts", "TCL alerts are unavailable.", true)
 			} else {
 				result.Warn("PARTIAL_RESULT", "tcl_alerts", "TCL alerts are incomplete because a later source page failed.", true)
 			}
 		}
-		if len(alerts) != 0 || err == nil {
-			alerts = uniqueAlerts(alerts)
+		if len(branch.alerts) != 0 || branch.alertsErr == nil {
+			alerts := uniqueAlerts(branch.alerts)
 			data["alerts"] = alerts
 			statuses := make([]map[string]any, 0, len(input.Lines))
 			for _, line := range input.Lines {
@@ -57,68 +121,47 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 		}
 	}
 	if includes["accessibility"] {
-		incidents, err := a.Provider.Incidents(ctx, input.Lines)
-		if err != nil {
-			if len(incidents) == 0 {
+		if branch.incidentsErr != nil {
+			if len(branch.incidents) == 0 {
 				result.Warn("SOURCE_UNAVAILABLE", "tcl_accessibility", "Accessibility data is unavailable.", true)
 			} else {
 				result.Warn("PARTIAL_RESULT", "tcl_accessibility", "Accessibility data is incomplete because a later source page failed.", true)
 			}
 		}
-		if len(incidents) != 0 || err == nil {
-			data["accessibility_incidents"] = incidents
+		if len(branch.incidents) != 0 || branch.incidentsErr == nil {
+			data["accessibility_incidents"] = branch.incidents
 		}
 	}
-
-	areaLabels, areaPoints, unresolved := a.resolveMobilityAreas(ctx, input.Areas)
-	for _, ref := range unresolved {
-		result.Warn("PLACE_NOT_FOUND", "areas", "Mobility area could not be resolved: "+mobilityRefLabel(ref)+".", false)
-	}
 	if includes["traffic"] {
-		conditions := []model.TrafficCondition{}
 		if len(areaPoints) > len(areaLabels) {
 			result.Warn("PARTIAL_RESULT", "traffic", "Traffic conditions cannot be filtered by coordinate-only areas.", false)
 		}
-		{
-			labels := areaLabels
-			if len(labels) == 0 {
-				labels = []string{""}
-			}
-			for _, label := range labels {
-				values, err := a.Provider.Traffic(ctx, label)
-				if err != nil {
-					result.Warn("SOURCE_UNAVAILABLE", "traffic", "Traffic conditions are unavailable.", true)
-					continue
-				}
-				conditions = append(conditions, values...)
-			}
-			data["traffic_conditions"] = uniqueTraffic(conditions)
+		if branch.trafficErr != nil {
+			result.Warn("SOURCE_UNAVAILABLE", "traffic", "Traffic conditions are unavailable.", true)
 		}
+		data["traffic_conditions"] = uniqueTraffic(branch.conditions)
 	}
 	if includes["roadworks"] {
-		events := []model.RoadEvent{}
-		if len(input.Areas) != 0 && len(areaPoints) == 0 {
+		if branch.roadBlocked {
+			data["road_events"] = []model.RoadEvent{}
+		} else {
+			if branch.eventsErr != nil {
+				if len(branch.events) == 0 {
+					result.Warn("SOURCE_UNAVAILABLE", "road_events", "Road events are unavailable.", true)
+				} else {
+					result.Warn("PARTIAL_RESULT", "road_events", "Road events are incomplete because a later source page failed.", true)
+				}
+			}
+			events := uniqueRoadEvents(branch.events)
+			if len(areaPoints) != 0 {
+				var omitted int
+				events, omitted = filterRoadEvents(events, areaPoints, 1500)
+				if omitted != 0 {
+					result.Warn("PARTIAL_RESULT", "road_events", "Road events without matching coordinates were omitted.", false)
+				}
+			}
 			data["road_events"] = events
-			return result
 		}
-		values, err := a.Provider.RoadEvents(ctx, "")
-		if err != nil {
-			if len(values) == 0 {
-				result.Warn("SOURCE_UNAVAILABLE", "road_events", "Road events are unavailable.", true)
-			} else {
-				result.Warn("PARTIAL_RESULT", "road_events", "Road events are incomplete because a later source page failed.", true)
-			}
-		}
-		events = append(events, values...)
-		events = uniqueRoadEvents(events)
-		if len(areaPoints) != 0 {
-			var omitted int
-			events, omitted = filterRoadEvents(events, areaPoints, 1500)
-			if omitted != 0 {
-				result.Warn("PARTIAL_RESULT", "road_events", "Road events without matching coordinates were omitted.", false)
-			}
-		}
-		data["road_events"] = events
 	}
 	retrieved := model.Ptr(model.Now())
 	for _, source := range []struct {
