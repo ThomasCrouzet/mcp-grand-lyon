@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ThomasCrouzet/mcp-grand-lyon/internal/model"
 )
@@ -20,6 +21,10 @@ func (provider *partialSourceProvider) Parkings(context.Context, model.Point, []
 
 func (provider *partialSourceProvider) Facilities(context.Context, model.Point, []string, float64, int) ([]model.Facility, error) {
 	return provider.facilities, errors.New("one facility source failed")
+}
+
+func (provider *partialSourceProvider) Plan(context.Context, model.Point, model.Point, time.Time, []string, model.TripPreferences) ([]model.TripOption, error) {
+	return nil, errors.New("routing unavailable")
 }
 
 func TestServicesPreservePartialProviderRows(t *testing.T) {

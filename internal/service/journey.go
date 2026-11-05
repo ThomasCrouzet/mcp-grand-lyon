@@ -82,7 +82,7 @@ func (app *App) TripOptions(ctx context.Context, input model.TripOptionsInput) m
 		app.appendVelovOption(ctx, &envelope, &options, *origin, *destination, preferences)
 	}
 	if seenModes["park_and_ride"] {
-		app.appendParkAndRideOption(ctx, &envelope, &options, *destination, distance)
+		app.appendParkAndRideOption(ctx, &envelope, &options, *origin, *destination, departure, preferences)
 	}
 	if seenModes["tcl"] {
 		app.appendTransitOptions(ctx, &envelope, &options, *origin, *destination, departure, preferences)
@@ -128,7 +128,7 @@ func evaluateTripOptions(options []model.TripOption, preferences model.TripPrefe
 		option := &options[index]
 		reasons := []string{}
 		switch option.Evidence {
-		case "calculated", "estimated":
+		case "calculated", "estimated", "mixed":
 		case "unavailable":
 			reasons = append(reasons, "no calculated itinerary is available")
 		default:
@@ -326,12 +326,12 @@ func filterStations(stations []model.VelovStation, minimum int, bikes bool) []mo
 	return result
 }
 
-func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Envelope, options *[]model.TripOption, destination model.Point, distance float64) {
+func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Envelope, options *[]model.TripOption, origin, destination model.Point, departure time.Time, preferences model.TripPreferences) {
 	if app.Provider == nil {
 		envelope.Warn("SOURCE_UNAVAILABLE", "parking", "The parking provider is unavailable.", true)
 		return
 	}
-	parkings, err := app.Provider.Parkings(ctx, destination, []string{"park_and_ride"}, 3000, 0, 3)
+	parkings, err := app.Provider.Parkings(ctx, destination, []string{"park_and_ride"}, 5000, 0, 5)
 	if err != nil && len(parkings) == 0 {
 		envelope.Warn("SOURCE_UNAVAILABLE", "parking", "Park-and-ride data is unavailable.", true)
 		return
@@ -342,65 +342,119 @@ func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Env
 	if len(parkings) == 0 {
 		return
 	}
-	var selected *model.ParkingOption
+	maximumAge := app.maximumStaleSeconds(ctx, "parking_realtime")
 	for index := range parkings {
-		if parkings[index].AvailableSpaces != nil && *parkings[index].AvailableSpaces > 0 {
-			selected = &parkings[index]
-			break
+		parking := parkings[index]
+		walking := 0
+		var walkingDistance *int
+		if parking.DistanceM != nil {
+			walking = int(*parking.DistanceM)
+			walkingDistance = &walking
 		}
-	}
-	if selected == nil {
-		for index := range parkings {
-			if parkings[index].AvailableSpaces == nil {
-				selected = &parkings[index]
-				break
+		availabilityScore := 0.2
+		var availability *string
+		availabilityStale := false
+		if parking.AvailableSpaces == nil {
+			envelope.Warn("PARTIAL_RESULT", "parking_availability", "Park-and-ride availability is unknown.", false)
+		} else {
+			text := fmt.Sprintf("%d spaces", *parking.AvailableSpaces)
+			availability = &text
+			availabilityScore = 0.5
+			if *parking.AvailableSpaces > 5 {
+				availabilityScore = 0.7
+			}
+			if !app.Config.Offline {
+				_, stale, missing := observationFreshness(parking.ObservedAt, parking.RetrievedAt, model.Now(), maximumAge)
+				availabilityStale = stale || missing
 			}
 		}
-	}
-	if selected == nil {
-		return
-	}
-	walking := 0
-	var walkingDistance *int
-	if selected.DistanceM != nil {
-		walking = int(*selected.DistanceM)
-		walkingDistance = &walking
-	} else {
-		envelope.Warn("PARTIAL_RESULT", "parking", "The park-and-ride walking distance is unknown.", false)
-	}
-	duration := int(distance / 9.0)
-	availabilityScore := 0.2
-	var availability *string
-	availabilityStale := false
-	if selected.AvailableSpaces == nil {
-		envelope.Warn("PARTIAL_RESULT", "parking_availability", "Park-and-ride availability is unknown.", false)
-	} else {
-		text := fmt.Sprintf("%d spaces", *selected.AvailableSpaces)
-		availability = &text
-		availabilityScore = 0.5
-		if *selected.AvailableSpaces > 5 {
-			availabilityScore = 0.7
+		option := model.TripOption{
+			Mode: "park_and_ride", Evidence: "unavailable", Availability: availability,
+			AvailabilityStale: availabilityStale, WalkingDistanceM: walkingDistance,
+			Summary: "Park-and-ride at " + parking.Name, Realtime: parking.Realtime && !availabilityStale,
+			Alerts: []model.TransitAlert{}, Sources: []string{"parking"},
+		}
+		carDistance := model.Distance(origin, model.Point{Latitude: parking.Latitude, Longitude: parking.Longitude})
+		carDuration := int(carDistance / 8.0)
+		carArrival := departure.Add(time.Duration(carDuration) * time.Second)
+		transferDuration := 120
+		plannedDeparture := carArrival.Add(time.Duration(transferDuration) * time.Second)
+		carLeg := model.TripLeg{
+			Mode: "car", Evidence: "estimated", From: "Origin", To: parking.Name,
+			StartAt: model.Ptr(departure), EndAt: model.Ptr(carArrival),
+			DistanceM: model.Ptr(int(carDistance)),
+		}
+		transferLeg := model.TripLeg{
+			Mode: "transfer", Evidence: "estimated", From: parking.Name, To: parking.Name,
+			StartAt: model.Ptr(carArrival), EndAt: model.Ptr(plannedDeparture),
+		}
+		if app.Config.TransitousEnabled && app.Provider != nil {
+			planned, planErr := app.Provider.Plan(ctx, model.Point{Latitude: parking.Latitude, Longitude: parking.Longitude}, destination, plannedDeparture, []string{"tcl"}, preferences)
+			if planErr != nil || len(planned) == 0 {
+				envelope.Warn("ROUTING_UNAVAILABLE", "park_and_ride", "A transit connection from the selected park-and-ride is unavailable.", true)
+				option.Summary = "Park-and-ride at " + parking.Name + "; transit connection unavailable"
+				*options = append(*options, option)
+				continue
+			}
+			transit := planned[0]
+			for _, candidate := range planned {
+				if candidate.DepartureAt != nil && !candidate.DepartureAt.Before(plannedDeparture) {
+					transit = candidate
+					break
+				}
+			}
+			if transit.DepartureAt != nil && transit.DepartureAt.Before(carArrival) {
+				option.Summary = "Park-and-ride at " + parking.Name + "; transit leaves before the car can arrive"
+				*options = append(*options, option)
+				continue
+			}
+			legs := []model.TripLeg{carLeg}
+			if transit.DepartureAt != nil && transit.DepartureAt.After(carArrival) {
+				transferLeg.EndAt = transit.DepartureAt
+				legs = append(legs, transferLeg)
+			}
+			legs = append(legs, transit.Legs...)
+			option.Legs = legs
+			option.Transfers = transit.Transfers
+			option.Alerts = transit.Alerts
+			option.Accessibility = transit.Accessibility
+			option.Realtime = option.Realtime || transit.Realtime
+			option.Evidence = "mixed"
+			if transit.ArrivalAt != nil && transit.DepartureAt != nil {
+				totalDuration := int(transit.ArrivalAt.Sub(departure).Seconds())
+				option.EstimatedDurationSeconds = &totalDuration
+				option.DepartureAt = model.Ptr(departure)
+				option.ArrivalAt = transit.ArrivalAt
+			}
+			option.WalkingDistanceM = transit.WalkingDistanceM
+			disruptions := 0.0
+			if len(option.Alerts) != 0 {
+				disruptions = 1
+			}
+			option.Score = app.tripScore(model.Value(option.EstimatedDurationSeconds), 0.7, disruptions, model.Value(option.WalkingDistanceM), availabilityScore)
+			option.Summary = "Park-and-ride at " + parking.Name
+			if transit.Summary != "" {
+				option.Summary += "; " + transit.Summary
+			}
+			envelope.Sources = append(envelope.Sources, model.SourceProvenance{
+				Provider: "Transitous", SourceID: "transitous", Dataset: "plan",
+				Attribution: "Transitous / MOTIS", License: "unknown",
+				RetrievedAt: model.Ptr(model.Now()), Realtime: transit.Realtime,
+			})
+		} else {
+			envelope.Warn("ROUTING_UNAVAILABLE", "park_and_ride", "A transit connection from the selected park-and-ride is unavailable.", true)
+			option.Summary = "Park-and-ride at " + parking.Name + "; transit connection unavailable"
 		}
 		if !app.Config.Offline {
-			_, stale, missing := observationFreshness(selected.ObservedAt, selected.RetrievedAt, model.Now(), app.maximumStaleSeconds(ctx, "parking_realtime"))
-			availabilityStale = stale || missing
+			age, stale, _ := observationFreshness(parking.ObservedAt, parking.RetrievedAt, model.Now(), maximumAge)
+			envelope.Sources = append(envelope.Sources, model.SourceProvenance{
+				Provider: "DataGrandLyon", SourceID: "parking", Dataset: "parking_availability",
+				Attribution: "Métropole de Lyon", License: "unknown",
+				ObservedAt: parking.ObservedAt, RetrievedAt: parking.RetrievedAt, AgeSeconds: age,
+				Realtime: parking.Realtime, Stale: stale,
+			})
 		}
-	}
-	*options = append(*options, model.TripOption{
-		Mode: "park_and_ride", Score: app.tripScore(duration, 0.7, 0.1, walking, availabilityScore), Evidence: "estimated",
-		EstimatedDurationSeconds: &duration, WalkingDistanceM: walkingDistance,
-		Availability: availability, AvailabilityStale: availabilityStale,
-		Summary: "Park-and-ride at " + selected.Name, Realtime: selected.Realtime && !availabilityStale,
-		Alerts: []model.TransitAlert{}, Sources: []string{"parking"},
-	})
-	if !app.Config.Offline {
-		age, stale, _ := observationFreshness(selected.ObservedAt, selected.RetrievedAt, model.Now(), app.maximumStaleSeconds(ctx, "parking_realtime"))
-		envelope.Sources = append(envelope.Sources, model.SourceProvenance{
-			Provider: "DataGrandLyon", SourceID: "parking", Dataset: "parking_availability",
-			Attribution: "Métropole de Lyon", License: "unknown",
-			ObservedAt: selected.ObservedAt, RetrievedAt: selected.RetrievedAt, AgeSeconds: age,
-			Realtime: selected.Realtime, Stale: stale,
-		})
+		*options = append(*options, option)
 	}
 }
 

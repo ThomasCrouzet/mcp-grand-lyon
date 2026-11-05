@@ -188,6 +188,17 @@ an arrival. Operators are reported as returned by the provider. Accessibility st
 `null` unless the provider explicitly certifies the whole itinerary, and alerts are
 retained for `avoid_disruptions`.
 
+Park-and-ride options are composed from connected car, transfer, transit, and final
+walking segments when routing is available. Segment times form a chain from the
+requested departure, waiting and transfers are included, and walking from every
+segment feeds the same `max_walking_m` limit. Candidate interchanges are compared
+within a bounded count, so a feasible better interchange can beat the parking
+closest to the destination. Car and transfer segments use `evidence: "estimated"`,
+routed legs use `"calculated"`, and the combined option uses `"mixed"`. A missing
+connection, missed departure, unknown/stale occupancy, or walking-limit violation
+makes the option ineligible while preserving parking information. Current occupancy
+is never presented as a guaranteed future space.
+
 ## `lyon_parking_options`
 
 Find public parking and park-and-ride facilities. Results contain `options`.

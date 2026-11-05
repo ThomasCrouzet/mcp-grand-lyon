@@ -214,6 +214,7 @@ type IndicatorValue struct {
 
 type TripLeg struct {
 	Mode      string     `json:"mode" yaml:"mode"`
+	Evidence  string     `json:"evidence" yaml:"evidence"`
 	Operator  string     `json:"operator" yaml:"operator"`
 	Line      string     `json:"line" yaml:"line"`
 	From      string     `json:"from" yaml:"from"`

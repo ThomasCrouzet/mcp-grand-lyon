@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -25,6 +26,10 @@ func (provider *freshnessProvider) Departures(context.Context, string, string, s
 
 func (provider *freshnessProvider) Parkings(context.Context, model.Point, []string, float64, int, int) ([]model.ParkingOption, error) {
 	return provider.parkings, nil
+}
+
+func (provider *freshnessProvider) Plan(context.Context, model.Point, model.Point, time.Time, []string, model.TripPreferences) ([]model.TripOption, error) {
+	return nil, errors.New("routing unavailable")
 }
 
 func TestObservationFreshnessKeepsUnknownAndStaleDistinct(t *testing.T) {
