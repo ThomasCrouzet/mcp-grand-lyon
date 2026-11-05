@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -70,6 +71,18 @@ func TestOpenAppliesEmbeddedMigrations(t *testing.T) {
 	}
 	if info["fts5"] != true || info["rtree"] != true {
 		t.Fatalf("SQLite features unavailable: %#v", info)
+	}
+}
+
+func TestOpenReportsCanceledContext(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if store, err := Open(ctx, filepath.Join(t.TempDir(), "canceled.db")); err == nil {
+		_ = store.Close()
+		t.Fatal("Open succeeded with a canceled context")
+	} else if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Open error = %v, want context.Canceled", err)
 	}
 }
 

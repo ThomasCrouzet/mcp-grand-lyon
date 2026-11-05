@@ -85,9 +85,15 @@ func (s *Store) migrate(ctx context.Context) error {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		version := strings.TrimSuffix(entry.Name(), ".sql")
 		var applied int
 		if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations WHERE version=?", version).Scan(&applied); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("read migration %s: %w", version, err)
 		}
 		if applied != 0 {
@@ -99,6 +105,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		tx, err := s.DB.BeginTx(ctx, nil)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, string(body)); err == nil {
@@ -106,9 +115,15 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		if err != nil {
 			_ = tx.Rollback()
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("apply migration %s: %w", version, err)
 		}
 		if err := tx.Commit(); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("commit migration %s: %w", version, err)
 		}
 	}
