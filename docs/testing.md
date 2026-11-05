@@ -135,10 +135,23 @@ Current exceptions cover parsers, resource closure, storage state, retention, co
 These tests use real SQLite connections and local HTTP servers.
 They do not replace the process-level suite.
 
+## Race-instrumented server acceptance
+
+```bash
+make race-acceptance
+```
+
+This dedicated Linux mode builds the child MCP server with `-race`, verifies the
+instrumented binary contains race runtime symbols, runs several concurrent tool
+calls in one stdio session, exercises a controlled pending request and
+cancellation, and shuts down with active calls under a bounded timeout.
+The evidence records the binary hash and `race_instrumented: true`.
+A race report fails the target and remains in local stderr evidence.
+The normal `CGO_ENABLED=0` installed-binary check remains separate and unchanged.
+
 ## Release verification
 
 Build release archives in a new external directory:
-
 ```bash
 make release RELEASE_DIR=/new/external/release-directory
 ```
