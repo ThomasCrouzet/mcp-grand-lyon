@@ -159,6 +159,16 @@ The deadline rejects late options and options with no verified arrival.
 `wheelchair` keeps only options with verified accessible status.
 Without a deadline, an unplanned TCL option remains visible as `evidence: "unavailable"` with a `ROUTING_UNAVAILABLE` warning, and it is never recommended.
 
+When Transitous is enabled, each itinerary preserves the provider's actual
+`startTime`/`endTime`, so `departure_at`, `arrival_at`, and the deadline use the
+real instants rather than the request time. `legs` carries each leg's mode,
+operator, line, endpoints, times, distance, and realtime flag. Walking distance is
+the sum of walking legs; if a walking leg has no distance, the total stays unknown.
+Missing or contradictory timing makes the itinerary unusable instead of fabricating
+an arrival. Operators are reported as returned by the provider. Accessibility stays
+`null` unless the provider explicitly certifies the whole itinerary, and alerts are
+retained for `avoid_disruptions`.
+
 ## `lyon_parking_options`
 
 Find public parking and park-and-ride facilities. Results contain `options`.

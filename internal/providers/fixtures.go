@@ -510,7 +510,21 @@ func (fixtures *Fixtures) Plan(ctx context.Context, origin, destination model.Po
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return nil, ErrFixtureRoutingUnavailable
+	payload, found, err := fixtures.readJSON("routing/transitous_plan.json")
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, ErrFixtureRoutingUnavailable
+	}
+	options, err := ParseTransitousPlan(payload)
+	if err != nil {
+		return nil, err
+	}
+	if len(options) == 0 {
+		return nil, ErrFixtureRoutingUnavailable
+	}
+	return options, nil
 }
 
 func (fixtures *Fixtures) readJSON(name string) (any, bool, error) {

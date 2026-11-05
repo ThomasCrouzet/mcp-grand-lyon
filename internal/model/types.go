@@ -208,6 +208,18 @@ type IndicatorValue struct {
 	Supported  bool       `json:"supported" yaml:"supported"`
 }
 
+type TripLeg struct {
+	Mode      string     `json:"mode" yaml:"mode"`
+	Operator  string     `json:"operator" yaml:"operator"`
+	Line      string     `json:"line" yaml:"line"`
+	From      string     `json:"from" yaml:"from"`
+	To        string     `json:"to" yaml:"to"`
+	StartAt   *time.Time `json:"start_at" yaml:"start_at"`
+	EndAt     *time.Time `json:"end_at" yaml:"end_at"`
+	DistanceM *int       `json:"distance_m" yaml:"distance_m"`
+	Realtime  bool       `json:"realtime" yaml:"realtime"`
+}
+
 type TripOption struct {
 	Mode                     string         `json:"mode" yaml:"mode"`
 	Score                    float64        `json:"score" yaml:"score"`
@@ -222,6 +234,7 @@ type TripOption struct {
 	Availability             *string        `json:"availability" yaml:"availability"`
 	Reliability              *float64       `json:"reliability" yaml:"reliability"`
 	Accessibility            *string        `json:"accessibility" yaml:"accessibility"`
+	Legs                     []TripLeg      `json:"legs" yaml:"legs"`
 	Alerts                   []TransitAlert `json:"alerts" yaml:"alerts"`
 	Realtime                 bool           `json:"realtime" yaml:"realtime"`
 	Summary                  string         `json:"summary" yaml:"summary"`
