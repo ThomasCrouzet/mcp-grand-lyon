@@ -54,7 +54,7 @@ func copyConfiguration(cfg config.Config, force bool) error {
 	if err := os.MkdirAll(cfg.ConfigDir, 0o700); err != nil {
 		return fmt.Errorf("create configuration directory: %w", err)
 	}
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
 	}
 	files := []struct {

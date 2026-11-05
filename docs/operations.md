@@ -85,11 +85,18 @@ The current ranking logic does not apply this compatibility value.
 ```bash
 grand-lyon-mcp db migrate
 grand-lyon-mcp db info
+grand-lyon-mcp db secure
 ```
 
 Migrations also run at application startup.
 The Go release uses the existing SQLite schema and migration identifiers.
 It can continue with a database from the Python release.
+
+On Unix, startup and setup create the configured data directory with mode `0700` and the database with `0600`.
+SQLite journal, WAL, and shared-memory sidecars inherit the database file mode.
+`doctor` reports the effective storage permissions under `storage`.
+`db secure` restricts only the configured data directory, database, and its sidecars to the current user; it never walks or changes a shared parent directory.
+Windows ACL guarantees are not inferred from POSIX mode bits and remain unverified.
 
 Use SQLite's backup API or `sqlite3 .backup` for an active database.
 Stop the server before making a file copy.

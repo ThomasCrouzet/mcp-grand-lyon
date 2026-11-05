@@ -168,6 +168,7 @@ The initial configuration directory selects which `secrets.env` is read. The par
 **Effective mode:** If either DataGrandLyon credential is missing, application startup selects offline providers even when the offline setting is `false`. Check `doctor` for the effective mode.
 For live use, set both credentials in your environment, run `grand-lyon-mcp setup --yes --live`, and regenerate the MCP configuration.
 Setup stores credentials in user `secrets.env`; on Unix it uses mode `0600`. Keep credentials out of client JSON and commits.
+On Unix, setup and direct startup create the application data directory with mode `0700` and the SQLite database with `0600`; `doctor` reports unexpected broader permissions and `grand-lyon-mcp db secure` applies the documented remediation without touching unrelated paths.
 
 Edit the generated `profiles.yaml` to replace demonstration home/work places and the `weekday_morning` briefing.
 See [Operations](docs/operations.md#configuration) for timeouts, concurrency, journey weights, and accepted legacy settings that do not affect runtime behavior.
