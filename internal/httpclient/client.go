@@ -3,9 +3,7 @@ package httpclient
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"io"
 	"math/rand"
@@ -168,8 +166,7 @@ func (client *Client) Get(
 func (client *Client) flightKey(rawURL string, auth bool, maxBytes int64) string {
 	identity := ""
 	if auth {
-		digest := sha256.Sum256([]byte(client.cfg.Username + "\x00" + client.cfg.Password))
-		identity = hex.EncodeToString(digest[:8])
+		identity = client.cfg.Username
 	}
 	return rawURL + "|" + strconv.FormatBool(auth) + "|" + strconv.FormatInt(maxBytes, 10) + "|" + identity
 }
