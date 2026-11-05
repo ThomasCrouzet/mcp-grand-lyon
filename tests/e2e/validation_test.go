@@ -101,7 +101,8 @@ func testFrameBounds(t *testing.T) {
 	client.writeTranscript(map[string]any{
 		"direction": "client", "oversized_frame_bytes": len(frame),
 	})
-	if _, err := client.stdin.Write(frame); err != nil {
+	if _, err := client.stdin.Write(frame); err != nil &&
+		!errors.Is(err, os.ErrClosed) && !strings.Contains(err.Error(), "broken pipe") {
 		t.Fatalf("write oversized frame: %v", err)
 	}
 	assertOversizedFrameStopsServer(t, client)

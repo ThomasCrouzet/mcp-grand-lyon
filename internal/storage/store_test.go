@@ -66,8 +66,8 @@ func TestOpenAppliesEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info["migration_count"] != 6 {
-		t.Fatalf("migration_count = %v, want 6", info["migration_count"])
+	if info["migration_count"] != 7 {
+		t.Fatalf("migration_count = %v, want 7", info["migration_count"])
 	}
 	if info["fts5"] != true || info["rtree"] != true {
 		t.Fatalf("SQLite features unavailable: %#v", info)

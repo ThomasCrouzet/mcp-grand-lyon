@@ -36,6 +36,10 @@ var supportedEnvironmentKeys = []string{
 	"GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS",
 	"GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS",
 	"GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD",
+	"GRAND_LYON_MCP_BRIEFING_RETENTION_DAYS",
+	"GRAND_LYON_MCP_BRIEFING_MAX_COUNT",
+	"GRAND_LYON_MCP_VELOV_RETENTION_DAYS",
+	"GRAND_LYON_MCP_VELOV_MAX_COUNT",
 	"TRANSITOUS_ENABLED",
 	"TRANSITOUS_BASE_URL",
 }
@@ -65,7 +69,14 @@ type Config struct {
 	ConnectTimeout      time.Duration
 	ReadTimeout         time.Duration
 	FuzzyScoreThreshold int
+	BriefingRetention   HistoryRetention
+	VelovRetention      HistoryRetention
 	JourneyScoring      model.JourneyScoringWeights
+}
+
+type HistoryRetention struct {
+	MaxAgeDays int `json:"max_age_days"`
+	MaxCount   int `json:"max_count"`
 }
 
 type yamlConfig struct {
@@ -76,6 +87,7 @@ type yamlConfig struct {
 	Cache          yamlCache          `yaml:"cache"`
 	Network        yamlNetwork        `yaml:"network"`
 	JourneyScoring yamlJourneyScoring `yaml:"journey_scoring"`
+	Retention      yamlRetention      `yaml:"retention"`
 }
 
 type yamlRuntime struct {
@@ -121,6 +133,13 @@ type yamlJourneyScoring struct {
 	Walking        *float64 `yaml:"walking"`
 	Availability   *float64 `yaml:"availability"`
 	UserPreference *float64 `yaml:"user_preference"`
+}
+
+type yamlRetention struct {
+	BriefingMaxAgeDays *int `yaml:"briefing_max_age_days"`
+	BriefingMaxCount   *int `yaml:"briefing_max_count"`
+	VelovMaxAgeDays    *int `yaml:"velov_max_age_days"`
+	VelovMaxCount      *int `yaml:"velov_max_count"`
 }
 
 type looseBool bool
@@ -274,6 +293,8 @@ func defaultConfig(configDir, dataDir string) Config {
 		ConnectTimeout:      5 * time.Second,
 		ReadTimeout:         20 * time.Second,
 		FuzzyScoreThreshold: 72,
+		BriefingRetention:   HistoryRetention{MaxAgeDays: 90, MaxCount: 100},
+		VelovRetention:      HistoryRetention{MaxAgeDays: 30, MaxCount: 10000},
 		JourneyScoring: model.JourneyScoringWeights{
 			Duration:       0.35,
 			Reliability:    0.25,
@@ -357,6 +378,18 @@ func applyYAML(cfg *Config, path string) error {
 	if overlay.Network.VerifyTLS != nil {
 		cfg.VerifyTLS = bool(*overlay.Network.VerifyTLS)
 	}
+	if overlay.Retention.BriefingMaxAgeDays != nil {
+		cfg.BriefingRetention.MaxAgeDays = *overlay.Retention.BriefingMaxAgeDays
+	}
+	if overlay.Retention.BriefingMaxCount != nil {
+		cfg.BriefingRetention.MaxCount = *overlay.Retention.BriefingMaxCount
+	}
+	if overlay.Retention.VelovMaxAgeDays != nil {
+		cfg.VelovRetention.MaxAgeDays = *overlay.Retention.VelovMaxAgeDays
+	}
+	if overlay.Retention.VelovMaxCount != nil {
+		cfg.VelovRetention.MaxCount = *overlay.Retention.VelovMaxCount
+	}
 	applyJourneyYAML(&cfg.JourneyScoring, overlay.JourneyScoring)
 	return nil
 }
@@ -413,6 +446,18 @@ func applyEnvironment(cfg *Config, values map[string]string) error {
 	if cfg.FuzzyScoreThreshold, err = intValue(values, "GRAND_LYON_MCP_FUZZY_SCORE_THRESHOLD", cfg.FuzzyScoreThreshold); err != nil {
 		return err
 	}
+	if cfg.BriefingRetention.MaxAgeDays, err = intValue(values, "GRAND_LYON_MCP_BRIEFING_RETENTION_DAYS", cfg.BriefingRetention.MaxAgeDays); err != nil {
+		return err
+	}
+	if cfg.BriefingRetention.MaxCount, err = intValue(values, "GRAND_LYON_MCP_BRIEFING_MAX_COUNT", cfg.BriefingRetention.MaxCount); err != nil {
+		return err
+	}
+	if cfg.VelovRetention.MaxAgeDays, err = intValue(values, "GRAND_LYON_MCP_VELOV_RETENTION_DAYS", cfg.VelovRetention.MaxAgeDays); err != nil {
+		return err
+	}
+	if cfg.VelovRetention.MaxCount, err = intValue(values, "GRAND_LYON_MCP_VELOV_MAX_COUNT", cfg.VelovRetention.MaxCount); err != nil {
+		return err
+	}
 	if cfg.ConnectTimeout, err = durationValue(values, "GRAND_LYON_MCP_HTTP_CONNECT_TIMEOUT_SECONDS", cfg.ConnectTimeout); err != nil {
 		return err
 	}
@@ -434,6 +479,13 @@ func validate(cfg Config) error {
 	}
 	if cfg.FuzzyScoreThreshold < 0 || cfg.FuzzyScoreThreshold > 100 {
 		return errors.New("fuzzy_score_threshold must be between 0 and 100")
+	}
+	for name, retention := range map[string]HistoryRetention{
+		"briefing": cfg.BriefingRetention, "velov": cfg.VelovRetention,
+	} {
+		if retention.MaxAgeDays < 0 || retention.MaxCount < 0 {
+			return fmt.Errorf("%s retention limits must not be negative", name)
+		}
 	}
 	weights := []float64{
 		cfg.JourneyScoring.Duration,

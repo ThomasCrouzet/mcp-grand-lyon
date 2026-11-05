@@ -15,3 +15,8 @@ journey_scoring:
   walking: 0.10
   availability: 0.10
   user_preference: 0.05
+retention:
+  briefing_max_age_days: 90
+  briefing_max_count: 100
+  velov_max_age_days: 30
+  velov_max_count: 10000

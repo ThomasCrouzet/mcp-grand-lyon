@@ -113,6 +113,30 @@ Use SQLite's backup API or `sqlite3 .backup` for an active database.
 Stop the server before making a file copy.
 Copy the database only after all connections close.
 
+### Personal history retention
+
+Personal briefing snapshots and bicycle observations have bounded defaults:
+`retention.briefing_max_age_days` (90), `retention.briefing_max_count` (100),
+`retention.velov_max_age_days` (30), and `retention.velov_max_count` (10000).
+A zero value disables that dimension. The same values have
+`GRAND_LYON_MCP_BRIEFING_*` and `GRAND_LYON_MCP_VELOV_*` environment overrides.
+Startup applies retention once, and `history prune` applies it explicitly.
+Repeated identical bicycle observations are deduplicated; changed observations
+retain their actual timestamps. Identical briefing facts do not create duplicate
+snapshots.
+
+```bash
+grand-lyon-mcp history info
+grand-lyon-mcp history prune
+grand-lyon-mcp history delete --profile weekday_morning
+grand-lyon-mcp history delete --station 1001
+grand-lyon-mcp history delete --all-velov
+```
+
+Scoped deletion preserves unrelated profiles, places, commutes, and timetable
+data. `history info` and `doctor` report row counts, the effective policy, and the
+database size. Deleting rows does not immediately shrink the SQLite file.
+
 ### Legacy retention tables
 
 The database keeps `http_cache` and `source_health` tables for schema compatibility.

@@ -36,6 +36,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			_ = store.Close()
 		}
 	}()
+	if _, err := store.PruneHistory(ctx, HistoryRetentionPolicy(cfg)); err != nil {
+		return nil, err
+	}
 	load := func(name, fallback string) ([]byte, error) {
 		data, readErr := os.ReadFile(filepath.Join(cfg.ConfigDir, name))
 		if errors.Is(readErr, os.ErrNotExist) {
@@ -87,6 +90,15 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 	complete = true
 	return app, nil
+}
+
+func HistoryRetentionPolicy(cfg config.Config) storage.HistoryRetentionPolicy {
+	return storage.HistoryRetentionPolicy{
+		BriefingMaxAgeDays: cfg.BriefingRetention.MaxAgeDays,
+		BriefingMaxCount:   cfg.BriefingRetention.MaxCount,
+		VelovMaxAgeDays:    cfg.VelovRetention.MaxAgeDays,
+		VelovMaxCount:      cfg.VelovRetention.MaxCount,
+	}
 }
 
 func (app *App) Close() error {

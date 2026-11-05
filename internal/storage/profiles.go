@@ -121,9 +121,46 @@ func (s *Store) SaveSnapshot(ctx context.Context, key string, value map[string]a
 	if err != nil {
 		return err
 	}
+	var previous string
+	err = s.DB.QueryRowContext(ctx, `SELECT payload_json FROM briefing_snapshots WHERE profile_key=? ORDER BY id DESC LIMIT 1`, key).Scan(&previous)
+	if err == nil && canonicalSnapshotJSON(previous) == canonicalSnapshotJSON(string(payload)) {
+		return nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
 	_, err = s.DB.ExecContext(ctx, `INSERT INTO briefing_snapshots(profile_key,captured_at,payload_json) VALUES (?,?,?)`,
 		key, time.Now().UTC().Format(time.RFC3339Nano), string(payload))
 	return err
+}
+
+func canonicalSnapshotJSON(raw string) string {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return raw
+	}
+	removeSnapshotVolatileFields(value)
+	data, err := json.Marshal(value)
+	if err != nil {
+		return raw
+	}
+	return string(data)
+}
+
+func removeSnapshotVolatileFields(value any) {
+	switch item := value.(type) {
+	case map[string]any:
+		for _, key := range []string{"age_seconds", "distance_m", "generated_at", "observed_at", "request_id", "retrieved_at"} {
+			delete(item, key)
+		}
+		for _, child := range item {
+			removeSnapshotVolatileFields(child)
+		}
+	case []any:
+		for _, child := range item {
+			removeSnapshotVolatileFields(child)
+		}
+	}
 }
 
 func (s *Store) LastSnapshot(ctx context.Context, key string) (map[string]any, error) {
@@ -162,7 +199,7 @@ func (s *Store) RecordVelov(ctx context.Context, station model.VelovStation) err
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO velov_snapshots
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO velov_snapshots
 		(station_id,observed_at,bikes_available,docks_available,hour_slot) VALUES (?,?,?,?,?)`,
 		station.ID, observed.Format(time.RFC3339Nano), station.BikesAvailable, station.DocksAvailable, observed.Format("15"))
 	if err != nil {
