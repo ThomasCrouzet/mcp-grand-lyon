@@ -241,27 +241,46 @@ func testEffectiveConfigReporting(t *testing.T) {
 		t.Fatal(err)
 	}
 	env = mergeEnvironment(env, map[string]string{offlineEnv: "false"})
-	doctor, err := testHarness.runCommand(folder, env, 10*time.Second,
+	doctor, runErr := testHarness.runCommand(folder, env, 10*time.Second,
 		testHarness.binary, "doctor")
-	if err != nil {
-		t.Fatal(err)
+	if runErr == nil || doctor.ReturnCode != 3 {
+		t.Fatalf("doctor did not report the unusable live capability: code=%d err=%v", doctor.ReturnCode, runErr)
 	}
 	var status struct {
-		Offline bool `json:"offline"`
+		Offline       bool   `json:"offline"`
+		RequestedMode string `json:"requested_mode"`
+		EffectiveMode string `json:"effective_mode"`
+		ModeReason    string `json:"mode_reason"`
+		Credentials   string `json:"credentials"`
+		Capabilities  []struct {
+			SourceID string `json:"source_id"`
+			Status   string `json:"status"`
+		} `json:"source_capabilities"`
 	}
 	if err := json.Unmarshal(doctor.Stdout, &status); err != nil {
 		t.Fatal(err)
 	}
-	if !status.Offline {
-		t.Fatal("doctor reported requested live mode after the app selected fixtures")
+	if status.Offline || status.RequestedMode != "live" || status.EffectiveMode != "live" {
+		t.Fatalf("doctor reported the wrong mode: %#v", status)
 	}
-	smoke, err := testHarness.runCommand(folder, env, 10*time.Second,
-		testHarness.binary, "smoke", "--tool", "lyon_resolve_place")
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(status.ModeReason, "credentials are missing") || status.Credentials != "missing" {
+		t.Fatalf("doctor did not explain the live limitation: %#v", status)
 	}
-	if !strings.Contains(string(smoke.Stdout), "mode=offline") {
-		t.Fatalf("smoke did not report effective offline mode: %s", smoke.Stdout)
+	photonAvailable := false
+	credentialBlocked := false
+	for _, capability := range status.Capabilities {
+		if capability.SourceID == "photon" && capability.Status == "AVAILABLE" {
+			photonAvailable = true
+		}
+		if capability.Status == "CREDENTIALS_MISSING" {
+			credentialBlocked = true
+		}
+	}
+	if !photonAvailable || !credentialBlocked {
+		t.Fatalf("source capabilities do not separate public and credential-dependent sources: %#v", status.Capabilities)
+	}
+	if strings.Contains(string(doctor.Stdout), "DATAGRANDLYON_PASSWORD") {
+		t.Fatal("doctor exposed a credential name")
 	}
 }
 

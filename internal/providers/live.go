@@ -39,6 +39,9 @@ var (
 	tableNamePattern      = regexp.MustCompile(`^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$`)
 	collectionNamePattern = regexp.MustCompile(`^[a-z0-9-]+(?::[a-z0-9_.-]+)?$`)
 	errSourceDisabled     = errors.New("source is disabled")
+	// ErrCredentialsMissing reports a credential-dependent source while the
+	// installation is running in live mode without DataGrandLyon credentials.
+	ErrCredentialsMissing = errors.New("DataGrandLyon credentials are missing")
 	// ErrResultTruncated reports that a bounded source transfer stopped before
 	// exhaustive coverage. Callers keep the usable rows and surface the limit.
 	ErrResultTruncated = errors.New("source result reached its bounded transfer budget")
@@ -137,6 +140,9 @@ func (live *Live) resolvePublicParkingSource(ctx context.Context) (resolvedSourc
 }
 
 func (live *Live) getJSON(ctx context.Context, rawURL string, auth bool) (any, error) {
+	if auth && (live.cfg.Username == "" || live.cfg.Password == "") {
+		return nil, ErrCredentialsMissing
+	}
 	response, err := live.client.Get(ctx, rawURL, auth, jsonLimit)
 	if err != nil {
 		return nil, err

@@ -169,7 +169,7 @@ The initial configuration directory selects which `secrets.env` is read. The par
 | `TRANSITOUS_ENABLED` | No | `false` | Enable optional journey planning |
 | `TRANSITOUS_BASE_URL` | No | `https://api.transitous.org/api/` | Planner base URL; does not expand the HTTP host allowlist |
 
-**Effective mode:** If either DataGrandLyon credential is missing, application startup selects offline providers even when the offline setting is `false`. Check `doctor` for the effective mode.
+**Effective mode:** Embedded fixtures are used only when the offline setting is explicitly true. Live mode stays live when credentials are missing: public geocoding and an enabled journey planner remain available, credential-dependent sources report `CREDENTIALS_MISSING`, and imported GTFS remains a theoretical local fallback. `doctor` reports requested mode, effective mode, local installation health, and per-source capabilities; it exits `3` when live mode lacks credentials. Check `doctor` and `config explain` after changing modes; a pre-existing installation that relied on the old implicit fixture fallback must set `runtime.offline: true` explicitly.
 For live use, set both credentials in your environment, run `grand-lyon-mcp setup --yes --live`, and regenerate the MCP configuration.
 Setup stores credentials in user `secrets.env`; on Unix it uses mode `0600`. Keep credentials out of client JSON and commits.
 On Unix, setup and direct startup create the application data directory with mode `0700` and the SQLite database with `0600`; `doctor` reports unexpected broader permissions and `grand-lyon-mcp db secure` applies the documented remediation without touching unrelated paths.

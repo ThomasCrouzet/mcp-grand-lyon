@@ -180,14 +180,18 @@ grand-lyon-mcp smoke --tool lyon_resolve_place
 
 `smoke` accepts several domain statuses.
 It does not prove live upstream availability.
-`doctor` and `smoke` report the effective application mode after provider selection.
-`doctor` also reports safe source registry fields.
+`doctor` reports `requested_mode`, `effective_mode`, `mode_reason`, local installation health, and per-source `source_capabilities`.
+Fixture mode is used only when offline is explicitly configured; a live installation with missing credentials keeps public sources available and marks credential-dependent sources `CREDENTIALS_MISSING`.
+`doctor` exits `0` for a usable explicit offline installation and `3` when live mode lacks DataGrandLyon credentials.
+A `CONFIGURED` source is resolved configuration, not proof of current availability; use the bounded live diagnostic for that.
+It also reports safe source registry fields.
 These fields are `source_id`, `enabled`, `status`, `service`, and `table_name`.
 They do not contain persistent source-health history.
 
 | Symptom | Check and action |
 | --- | --- |
 | HTTP 401 | Check credential variables and run `doctor`. |
+| Live mode without credentials | Set both credentials or explicitly configure offline mode; public sources remain available. |
 | Catalogue HTTP 403 | Use `catalog scan --mode auto` or `--mode known`. |
 | `SOURCE_UNRESOLVED` | Inspect `sources.yaml`, then run catalogue validation. |
 | No tools in the client | Check the absolute binary path and stdio arguments. |

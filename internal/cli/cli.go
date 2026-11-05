@@ -311,19 +311,41 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 				"table_name": source["table_name"],
 			})
 		}
-		return writeJSON(stdout, map[string]any{
+		capabilities, err := app.SourceCapabilities(ctx)
+		if err != nil {
+			return err
+		}
+		modeReason := "explicit offline mode"
+		if !cfg.Offline {
+			modeReason = "live mode requested"
+			if !app.LiveCredentialsPresent() {
+				modeReason = "live mode requested; DataGrandLyon credentials are missing"
+			}
+		}
+		if err := writeJSON(stdout, map[string]any{
 			"status":                   "OK",
+			"requested_mode":           app.RequestedMode(),
+			"effective_mode":           app.EffectiveMode(),
+			"mode_reason":              modeReason,
 			"offline":                  cfg.Offline,
 			"credentials":              credentialStatus,
+			"local_installation":       "OK",
 			"config_dir":               cfg.ConfigDir,
 			"data_dir":                 cfg.DataDir,
 			"db_path":                  cfg.DBPath,
 			"database":                 info,
 			"storage":                  storage.InspectStorage(cfg.DataDir, cfg.DBPath),
 			"sources":                  sourceStatus,
+			"source_capabilities":      capabilities,
 			"transitous_enabled":       cfg.TransitousEnabled,
 			"tls_verification_enabled": cfg.VerifyTLS,
-		})
+		}); err != nil {
+			return err
+		}
+		if !cfg.Offline && !app.LiveCredentialsPresent() {
+			return commandError{code: 3, err: errors.New("live mode is missing DataGrandLyon credentials; credential-dependent sources are unavailable")}
+		}
+		return nil
 	})
 }
 
