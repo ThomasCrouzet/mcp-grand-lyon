@@ -3,10 +3,13 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -144,7 +147,7 @@ func TestLiveParkingFallsBackToOfficialWFS(t *testing.T) {
 			http.Error(writer, "upstream failure", http.StatusInternalServerError)
 		case request.URL.Path == "/geoserver/ows":
 			wfsRequests.Add(1)
-			if request.URL.Query().Get("service") != "WFS" || request.URL.Query().Get("request") != "GetFeature" || request.URL.Query().Get("count") != "100" {
+			if request.URL.Query().Get("service") != "WFS" || request.URL.Query().Get("request") != "GetFeature" || request.URL.Query().Get("count") != "200" || request.URL.Query().Get("startIndex") != "0" {
 				t.Errorf("unexpected WFS query: %s", request.URL.RawQuery)
 			}
 			writeJSON(t, writer, map[string]any{
@@ -786,6 +789,140 @@ func TestTransitousRespectsFeatureFlagAndMapsItinerary(t *testing.T) {
 	}
 	if len(options[0].Legs) != 1 || options[0].Legs[0].Line != "A" || !options[0].Realtime {
 		t.Fatalf("itinerary evidence = %#v", options[0])
+	}
+}
+
+func TestQueryTablePaginatesAndPreservesLaterRows(t *testing.T) {
+	t.Parallel()
+	var starts []string
+	live := testLive(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		start := request.URL.Query().Get("start")
+		starts = append(starts, start)
+		rows := []any{}
+		if start == "0" {
+			for index := 0; index < 200; index++ {
+				rows = append(rows, map[string]any{"id": "first-" + strconv.Itoa(index)})
+			}
+		} else {
+			rows = append(rows, map[string]any{"id": "later"})
+		}
+		writeJSON(t, writer, map[string]any{"values": rows})
+	}), nil)
+	rows, err := live.queryTable(context.Background(), "grandlyon", "safe.table", 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 201 || rows[len(rows)-1]["id"] != "later" {
+		t.Fatalf("rows = %d, last = %#v", len(rows), rows[len(rows)-1])
+	}
+	if !reflect.DeepEqual(starts, []string{"0", "200"}) {
+		t.Fatalf("page starts = %v", starts)
+	}
+}
+
+func TestQueryTableKeepsEarlierRowsAfterLaterPageFailure(t *testing.T) {
+	t.Parallel()
+	live := testLive(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("start") == "0" {
+			rows := []any{}
+			for index := 0; index < 200; index++ {
+				rows = append(rows, map[string]any{"id": strconv.Itoa(index)})
+			}
+			writeJSON(t, writer, map[string]any{"values": rows})
+			return
+		}
+		http.Error(writer, "later page failed", http.StatusInternalServerError)
+	}), nil)
+	rows, err := live.queryTable(context.Background(), "grandlyon", "safe.table", 300)
+	if err == nil || len(rows) != 200 {
+		t.Fatalf("rows = %d, err = %v", len(rows), err)
+	}
+}
+
+func TestQueryTableStopsOnRepeatedPage(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	live := testLive(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		rows := []any{}
+		for index := 0; index < 200; index++ {
+			rows = append(rows, map[string]any{"id": strconv.Itoa(index)})
+		}
+		writeJSON(t, writer, map[string]any{"values": rows})
+	}), nil)
+	rows, err := live.queryTable(context.Background(), "grandlyon", "safe.table", 400)
+	if err != nil || len(rows) != 200 || requests.Load() != 2 {
+		t.Fatalf("repeated rows = %d, err = %v, requests = %d", len(rows), err, requests.Load())
+	}
+}
+
+func TestQueryTableReportsRowBudgetTruncation(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	live := testLive(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		page := requests.Add(1)
+		rows := []any{}
+		for index := 0; index < 200; index++ {
+			rows = append(rows, map[string]any{"id": strconv.Itoa(int(page)) + "-" + strconv.Itoa(index)})
+		}
+		writeJSON(t, writer, map[string]any{"values": rows})
+	}), nil)
+	rows, err := live.queryTable(context.Background(), "grandlyon", "safe.table", 400)
+	if !errors.Is(err, ErrResultTruncated) || len(rows) != 400 {
+		t.Fatalf("rows = %d, err = %v", len(rows), err)
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("requests = %d, want 2", requests.Load())
+	}
+}
+
+func TestOGCPaginationUsesOffsetAndPreservesLaterRows(t *testing.T) {
+	t.Parallel()
+	var offsets []string
+	live := testLive(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		offset := request.URL.Query().Get("offset")
+		offsets = append(offsets, offset)
+		features := []any{}
+		if offset == "0" {
+			for index := 0; index < 200; index++ {
+				features = append(features, map[string]any{"properties": map[string]any{"id": strconv.Itoa(index)}})
+			}
+		} else {
+			features = append(features, map[string]any{"properties": map[string]any{"id": "later"}})
+		}
+		writeJSON(t, writer, map[string]any{"features": features})
+	}), nil)
+	rows, err := live.fetchOGCItems(context.Background(), "test-collection", 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 201 || rows[len(rows)-1]["id"] != "later" {
+		t.Fatalf("OGC rows = %d, last = %#v", len(rows), rows[len(rows)-1])
+	}
+	if !reflect.DeepEqual(offsets, []string{"0", "200"}) {
+		t.Fatalf("OGC offsets = %v", offsets)
+	}
+}
+
+func TestFacilitiesRankByDistanceBeforePerCategoryLimit(t *testing.T) {
+	t.Parallel()
+	live := testLive(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !strings.Contains(request.URL.Path, "adrtoilettepublique") {
+			http.NotFound(writer, request)
+			return
+		}
+		writeJSON(t, writer, map[string]any{"features": []any{
+			map[string]any{"geometry": map[string]any{"type": "Point", "coordinates": []any{4.8600, 45.7600}}, "properties": map[string]any{"id": "far", "adresse": "Far"}},
+			map[string]any{"geometry": map[string]any{"type": "Point", "coordinates": []any{4.8501, 45.7600}}, "properties": map[string]any{"id": "near", "adresse": "Near"}},
+			map[string]any{"geometry": map[string]any{"type": "Point", "coordinates": []any{4.8550, 45.7600}}, "properties": map[string]any{"id": "middle", "adresse": "Middle"}},
+		}})
+	}), nil)
+	facilities, err := live.Facilities(context.Background(), model.Point{Latitude: 45.76, Longitude: 4.85}, []string{"toilet"}, 5000, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facilities) != 1 || facilities[0].ID != "near" {
+		t.Fatalf("facilities = %#v", facilities)
 	}
 }
 

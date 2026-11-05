@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"time"
 
@@ -63,11 +64,10 @@ func (app *App) NearbyFacilities(ctx context.Context, input model.NearbyFaciliti
 	for _, category := range input.Categories {
 		allowed[category] = true
 	}
-	counts := map[string]int{}
-	filtered := make([]model.Facility, 0, len(facilities))
+	byCategory := map[string][]model.Facility{}
 	unknownHours := 0
 	for _, facility := range facilities {
-		if !allowed[facility.Category] || counts[facility.Category] >= limit {
+		if !allowed[facility.Category] {
 			continue
 		}
 		distance := model.Distance(*point, model.Point{Latitude: facility.Latitude, Longitude: facility.Longitude})
@@ -86,8 +86,18 @@ func (app *App) NearbyFacilities(ctx context.Context, input model.NearbyFaciliti
 			}
 			facility.OpenStatus = "open"
 		}
-		counts[facility.Category]++
-		filtered = append(filtered, facility)
+		byCategory[facility.Category] = append(byCategory[facility.Category], facility)
+	}
+	filtered := make([]model.Facility, 0, len(facilities))
+	for _, category := range input.Categories {
+		items := byCategory[category]
+		sort.SliceStable(items, func(i, j int) bool {
+			return model.Value(items[i].DistanceM) < model.Value(items[j].DistanceM)
+		})
+		if len(items) > limit {
+			items = items[:limit]
+		}
+		filtered = append(filtered, items...)
 	}
 	envelope := model.NewEnvelope("ok", fmt.Sprintf("Found %d facilities.", len(filtered)), facilityData(filtered, input.Categories, input.OpenAt))
 	if err != nil {

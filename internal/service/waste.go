@@ -89,10 +89,13 @@ func (app *App) WasteDropoff(ctx context.Context, input model.WasteDropoffInput)
 		return envelope
 	}
 	facilities, err := app.Provider.WasteFacilities(ctx, *point, classification.Category, float64(radius), limit)
-	if err != nil {
+	if err != nil && len(facilities) == 0 {
 		envelope.Warn("SOURCE_UNAVAILABLE", "waste_facilities", "Waste facilities are unavailable.", true)
 		envelope.Data = wasteData(classification, nil, transport, input.OpenAt)
 		return envelope
+	}
+	if err != nil {
+		envelope.Warn("PARTIAL_RESULT", "waste_facilities", "Waste facilities are incomplete because a later source page failed.", true)
 	}
 	filtered := make([]model.WasteFacility, 0, len(facilities))
 	unknownHours := 0
