@@ -122,7 +122,21 @@ func (app *App) searchPlaces(ctx context.Context, query string, near *model.Poin
 		if err != nil {
 			addWarning("photon")
 		} else {
-			candidates = append(candidates, remote...)
+			for _, candidate := range remote {
+				if app.Store == nil {
+					candidates = append(candidates, candidate)
+					continue
+				}
+				properties := map[string]any{"label": candidate.Label, "confidence": candidate.Confidence, "provider": "photon"}
+				if err = app.Store.SaveResolvedPlace(ctx, candidate, "photon", candidate.ID, properties); err != nil {
+					warnings = append(warnings, model.WarningItem{
+						Code: "SOURCE_UNAVAILABLE", Source: model.Ptr("places"),
+						Message: "Resolved place candidates could not be stored, so their IDs are not reusable.", Retryable: true,
+					})
+					continue
+				}
+				candidates = append(candidates, candidate)
+			}
 		}
 	}
 	unique := []model.PlaceCandidate{}

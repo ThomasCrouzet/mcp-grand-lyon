@@ -72,6 +72,15 @@ Queries and IDs have a 200-character limit. Profile-place names have a 64-charac
 limit. Coordinates must be valid latitude and longitude values.
 Each reference must use exactly one form.
 
+Every candidate ID returned by `lyon_resolve_place` is a reusable `place_id`.
+Photon candidates are stored in the local database with the provider object type
+in their identity (`photon:<osm_type>:<osm_id>`), so distinct objects that share
+a numeric ID stay distinct. IDs remain valid until that local database is deleted
+or replaced; the stored coordinates are the ones observed at resolution time.
+Local GTFS stop IDs (`gtfs:stop:...`) and profile-place names keep their existing
+behavior. If a candidate cannot be stored, it is not advertised and the result
+reports a source warning.
+
 ## `lyon_resolve_place`
 
 Resolve an address, stop, station, or personal place. The result contains `candidates`.

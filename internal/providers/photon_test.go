@@ -50,6 +50,46 @@ func TestParsePhotonPreservesZeroCoordinates(t *testing.T) {
 	}
 }
 
+func TestParsePhotonIncludesObjectTypeInIdentity(t *testing.T) {
+	feature := func(objectType string, osmID float64, latitude, longitude float64) map[string]any {
+		properties := map[string]any{"name": "Twin", "confidence": float64(0.8)}
+		if objectType != "" {
+			properties["osm_type"] = objectType
+		}
+		if osmID != 0 {
+			properties["osm_id"] = osmID
+		}
+		return map[string]any{
+			"geometry":   map[string]any{"coordinates": []any{longitude, latitude}},
+			"properties": properties,
+		}
+	}
+	places, err := ParsePhoton([]any{
+		feature("node", 9001, 45.75, 4.85),
+		feature("way", 9001, 45.77, 4.87),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(places) != 2 || places[0].ID == places[1].ID {
+		t.Fatalf("object types were not part of identity: %#v", places)
+	}
+	if places[0].ID != "photon:node:9001" || places[1].ID != "photon:way:9001" {
+		t.Fatalf("unexpected typed IDs: %#v", places)
+	}
+
+	unnamed, err := ParsePhoton([]any{
+		feature("", 0, 45.75, 4.85),
+		feature("", 0, 45.77, 4.87),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unnamed) != 2 || unnamed[0].ID == unnamed[1].ID {
+		t.Fatalf("same-name objects without an upstream ID collided: %#v", unnamed)
+	}
+}
+
 func TestParsePhotonRejectsInvalidRoot(t *testing.T) {
 	if _, err := ParsePhoton(true); err == nil {
 		t.Fatal("Photon accepted a scalar root")
