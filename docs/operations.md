@@ -26,6 +26,13 @@ Print effective nonsecret settings:
 
 ```bash
 grand-lyon-mcp env
+grand-lyon-mcp config explain
+```
+
+Move legacy nonsecret overrides out of `secrets.env`:
+
+```bash
+grand-lyon-mcp config migrate
 ```
 
 Open `secrets.env` with the configured editor:
@@ -38,7 +45,10 @@ grand-lyon-mcp env --edit
 
 Each command reads `settings.yaml` and `secrets.env` from the configuration directory.
 The secrets parser does not evaluate shell syntax.
-Nonempty process environment values override file values.
+Precedence is nonempty process environment, active `settings.yaml` fields, legacy `secrets.env` overrides kept only for migration, then built-in defaults.
+`secrets.env` stores credentials and the configuration-directory bootstrap; ordinary settings are not written there.
+`config explain` names each effective setting's origin and lists accepted settings with no runtime effect.
+`config migrate` preserves effective nonsecret values in `settings.yaml`, reports conflicts, then removes the legacy overrides; a second run makes no changes.
 Setup rejects symbolic links and nonregular files at managed destinations.
 On Unix, setup writes `secrets.env` with mode `0600`.
 The loader rejects any group or other permission bits.
@@ -63,6 +73,7 @@ Windows uses filesystem ACLs instead of POSIX mode bits.
 | `TRANSITOUS_BASE_URL` | Transitous API base URL |
 
 `settings.yaml` supports runtime, place matching, network, and journey scoring controls.
+Runtime fields also include `data_dir`, `db_path`, `fixtures_dir`, `log_level`, `transitous_enabled`, and `transitous_base_url`.
 Journey scoring weights must each use values from zero through one.
 Their sum must equal one.
 Numeric settings reject `NaN` and infinite values.

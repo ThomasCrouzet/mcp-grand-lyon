@@ -152,7 +152,9 @@ The binary uses native user directories by default:
 | Windows | `%APPDATA%\grand-lyon-mcp` | `%LOCALAPPDATA%\grand-lyon-mcp` |
 
 Run `grand-lyon-mcp env --config-dir` to print the resolved configuration directory.
-Configuration precedence, from highest to lowest, is nonempty process environment, nonempty `secrets.env` values, active `settings.yaml` fields, then built-in defaults.
+Configuration precedence, from highest to lowest, is nonempty process environment, active `settings.yaml` fields, legacy `secrets.env` overrides during migration, then built-in defaults.
+`secrets.env` stores only `DATAGRANDLYON_USERNAME`, `DATAGRANDLYON_PASSWORD`, and the configuration-directory bootstrap; ordinary settings live in `settings.yaml` or explicit launch environment variables.
+`grand-lyon-mcp config explain` reports each effective setting with its origin, and `grand-lyon-mcp config migrate` moves legacy nonsecret overrides into `settings.yaml` without changing their effective values.
 The initial configuration directory selects which `secrets.env` is read. The parser never evaluates shell syntax, and the binary does not load the repository's `.env` file.
 
 | Setting | Required | Built-in default | Purpose |

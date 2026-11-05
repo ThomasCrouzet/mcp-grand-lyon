@@ -85,6 +85,8 @@ func execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return nil
 	case "setup":
 		return runSetup(ctx, args[1:], stdout, stderr)
+	case "config":
+		return runConfig(args[1:], stdout, stderr)
 	case "env":
 		return runEnvironment(args[1:], stdout, stderr)
 	case "client-config":
@@ -147,6 +149,13 @@ func runSetup(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	if err := copyConfiguration(cfg, *force); err != nil {
 		return err
 	}
+	migration := config.MigrationResult{Migrated: []string{}, Conflicts: []config.MigrationConflict{}, Removed: []string{}}
+	if !*force {
+		migration, err = config.Migrate(cfg)
+		if err != nil {
+			return err
+		}
+	}
 	if err := config.WriteSecrets(cfg); err != nil {
 		return err
 	}
@@ -178,7 +187,40 @@ func runSetup(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		"data_dir":      cfg.DataDir,
 		"db_path":       cfg.DBPath,
 		"client_config": snippet,
+		"migration":     migration,
 	})
+}
+
+func runConfig(args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		return usageError("config requires explain or migrate")
+	}
+	switch args[0] {
+	case "explain":
+		if err := requireNoArguments(args[1:]); err != nil {
+			return err
+		}
+		report, err := config.Explain()
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, report)
+	case "migrate":
+		if err := requireNoArguments(args[1:]); err != nil {
+			return err
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		result, err := config.Migrate(cfg)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	default:
+		return usageError("unknown config command %q", args[0])
+	}
 }
 
 func runEnvironment(args []string, stdout, stderr io.Writer) error {
@@ -556,7 +598,7 @@ func smokePayloads() map[string]map[string]any {
 
 func writeHelp(output io.Writer) {
 	fmt.Fprintln(output, "Usage: grand-lyon-mcp <command> [options]")
-	fmt.Fprintln(output, "Commands: setup, env, client-config, doctor, db, sync, catalog, snapshot, smoke, serve, version")
+	fmt.Fprintln(output, "Commands: setup, config, env, client-config, doctor, db, sync, catalog, snapshot, smoke, serve, version")
 }
 
 func newFlagSet(name string, output io.Writer) *flag.FlagSet {

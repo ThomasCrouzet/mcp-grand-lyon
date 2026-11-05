@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 func TestLoadUsesEnvironmentBeforeSecretsAndYAML(t *testing.T) {
@@ -183,7 +185,7 @@ func TestLoadUsesIsolatedPlatformDefaults(t *testing.T) {
 	}
 }
 
-func TestWriteSecretsUsesMode0600AndRoundTripsValues(t *testing.T) {
+func TestWriteSecretsStoresOnlyCredentialsAndConfigBootstrap(t *testing.T) {
 	isolateEnvironment(t)
 	root := t.TempDir()
 	cfg := defaultConfig(filepath.Join(root, "config"), filepath.Join(root, "data"))
@@ -195,12 +197,22 @@ func TestWriteSecretsUsesMode0600AndRoundTripsValues(t *testing.T) {
 	if err := WriteSecrets(cfg); err != nil {
 		t.Fatalf("WriteSecrets() error = %v", err)
 	}
-	info, err := os.Stat(filepath.Join(cfg.ConfigDir, "secrets.env"))
+	secretsPath := filepath.Join(cfg.ConfigDir, "secrets.env")
+	info, err := os.Stat(secretsPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if mode := info.Mode().Perm(); mode != 0o600 {
 		t.Fatalf("mode = %04o, want 0600", mode)
+	}
+	contents, err := os.ReadFile(secretsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"HTTP_READ_TIMEOUT", "GRAND_LYON_MCP_OFFLINE", "GRAND_LYON_MCP_DB_PATH", "TRANSITOUS_ENABLED"} {
+		if strings.Contains(string(contents), forbidden) {
+			t.Fatalf("secrets file still mirrors runtime setting %s: %s", forbidden, contents)
+		}
 	}
 	t.Setenv("GRAND_LYON_MCP_CONFIG_DIR", cfg.ConfigDir)
 	loaded, err := Load()
@@ -210,13 +222,155 @@ func TestWriteSecretsUsesMode0600AndRoundTripsValues(t *testing.T) {
 	if loaded.Username != cfg.Username || loaded.Password != cfg.Password {
 		t.Fatalf("credentials did not round-trip: %#v", loaded)
 	}
-	if loaded.DataDir != cfg.DataDir || loaded.DBPath != cfg.DBPath || !loaded.Offline {
-		t.Fatalf("runtime settings did not round-trip: %#v", loaded)
+	if loaded.ConfigDir != cfg.ConfigDir {
+		t.Fatalf("config bootstrap did not round-trip: %#v", loaded)
+	}
+	if loaded.Offline {
+		t.Fatalf("offline leaked from secrets into runtime settings: %#v", loaded)
 	}
 
 	cfg.Password = "first\nsecond"
 	if err := WriteSecrets(cfg); err == nil {
 		t.Fatal("WriteSecrets accepted a multiline value")
+	}
+}
+
+func TestYAMLSettingIsNotOverriddenByGeneratedSecrets(t *testing.T) {
+	isolateEnvironment(t)
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	cfg := defaultConfig(configDir, filepath.Join(root, "data"))
+	cfg.Username = "account"
+	cfg.Password = "password"
+	if err := WriteSecrets(cfg); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GRAND_LYON_MCP_CONFIG_DIR", configDir)
+	settings := "version: 1\nnetwork:\n  read_timeout_seconds: 1\nruntime:\n  offline: true\n"
+	if err := os.WriteFile(filepath.Join(configDir, "settings.yaml"), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ReadTimeout != time.Second || !loaded.Offline {
+		t.Fatalf("YAML settings did not take effect: %#v", loaded)
+	}
+	if cfg.ReadTimeout == time.Second {
+		t.Fatal("test fixture did not start with the default timeout")
+	}
+}
+
+func TestMigrateMovesLegacyOverridesAndIsIdempotent(t *testing.T) {
+	isolateEnvironment(t)
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secrets := strings.Join([]string{
+		"DATAGRANDLYON_USERNAME=\"account\"",
+		"DATAGRANDLYON_PASSWORD=\"secret\"",
+		"GRAND_LYON_MCP_CONFIG_DIR=\"" + configDir + "\"",
+		"GRAND_LYON_MCP_DATA_DIR=\"" + filepath.Join(root, "legacy-data") + "\"",
+		"GRAND_LYON_MCP_DB_PATH=\"" + filepath.Join(root, "legacy-data", "legacy.db") + "\"",
+		"GRAND_LYON_MCP_OFFLINE=\"true\"",
+		"GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS=\"1\"",
+		"TRANSITOUS_ENABLED=\"true\"",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(configDir, "secrets.env"), []byte(secrets), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "settings.yaml"), []byte("version: 1\nnetwork:\n  read_timeout_seconds: 20\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GRAND_LYON_MCP_CONFIG_DIR", configDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ReadTimeout != time.Second || !cfg.Offline || !cfg.TransitousEnabled || cfg.DBPath != filepath.Join(root, "legacy-data", "legacy.db") {
+		t.Fatalf("legacy effective configuration changed before migration: %#v", cfg)
+	}
+	first, err := Migrate(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Changed || len(first.Migrated) == 0 || len(first.Conflicts) == 0 {
+		t.Fatalf("first migration = %#v", first)
+	}
+	settingsData, err := os.ReadFile(filepath.Join(configDir, "settings.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"read_timeout_seconds: 1", "offline: true", "transitous_enabled: true", "db_path:"} {
+		if !strings.Contains(string(settingsData), expected) {
+			t.Fatalf("settings missing %q:\n%s", expected, settingsData)
+		}
+	}
+	secretData, err := os.ReadFile(filepath.Join(configDir, "secrets.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(secretData), "READ_TIMEOUT") || strings.Contains(string(secretData), "OFFLINE") {
+		t.Fatalf("legacy nonsecret values remain in secrets:\n%s", secretData)
+	}
+	reloaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.ReadTimeout != time.Second || !reloaded.Offline || !reloaded.TransitousEnabled || reloaded.DBPath != cfg.DBPath {
+		t.Fatalf("migration did not preserve effective configuration: %#v", reloaded)
+	}
+	second, err := Migrate(reloaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changed || len(second.Migrated) != 0 {
+		t.Fatalf("second migration was not idempotent: %#v", second)
+	}
+}
+
+func TestExplainReportsOriginsWithoutCredentials(t *testing.T) {
+	isolateEnvironment(t)
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	cfg := defaultConfig(configDir, filepath.Join(root, "data"))
+	cfg.Username = "account"
+	cfg.Password = "secret-value"
+	if err := WriteSecrets(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "settings.yaml"), []byte("version: 1\nnetwork:\n  read_timeout_seconds: 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GRAND_LYON_MCP_CONFIG_DIR", configDir)
+	t.Setenv("GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS", "3")
+	report, err := Explain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := yaml.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "secret-value") {
+		t.Fatal("explain exposed a credential value")
+	}
+	settings, _ := report["settings"].([]SettingExplanation)
+	origins := map[string]string{}
+	values := map[string]string{}
+	for _, setting := range settings {
+		origins[setting.Setting] = setting.Origin
+		values[setting.Setting] = setting.Value
+	}
+	if origins["GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS"] != "yaml" || values["GRAND_LYON_MCP_HTTP_READ_TIMEOUT_SECONDS"] != "2" {
+		t.Fatalf("timeout explanation = %#v", origins)
+	}
+	if origins["GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS"] != "process" || values["GRAND_LYON_MCP_MAX_PARALLEL_REQUESTS"] != "3" {
+		t.Fatalf("override explanation = %#v", origins)
 	}
 }
 
