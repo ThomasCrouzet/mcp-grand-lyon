@@ -23,18 +23,26 @@ import (
 )
 
 const (
-	dataPusherBase = "https://data.grandlyon.com/fr/datapusher/ws"
-	photonURL      = "https://download.data.grandlyon.com/geocoding/photon-bal/api"
-	siriETURL      = "https://data.grandlyon.com/siri-lite/2.0/estimated-timetables.json"
-	siriSXURL      = "https://data.grandlyon.com/siri-lite/2.0/situation-exchange.json"
-	parkingOGC     = "metropole-de-lyon:parkings-de-la-metropole-de-lyon-disponibilites-temps-reel-v2"
-	jsonLimit      = 8 * 1024 * 1024
+	dataPusherBase         = "https://data.grandlyon.com/fr/datapusher/ws"
+	photonURL              = "https://download.data.grandlyon.com/geocoding/photon-bal/api"
+	siriETURL              = "https://data.grandlyon.com/siri-lite/2.0/estimated-timetables.json"
+	siriSXURL              = "https://data.grandlyon.com/siri-lite/2.0/situation-exchange.json"
+	parkingOGC             = "metropole-de-lyon:parkings-de-la-metropole-de-lyon-disponibilites-temps-reel-v2"
+	jsonLimit              = 8 * 1024 * 1024
+	dataPusherPageSize     = 200
+	dataPusherMaximumRows  = 1000
+	dataPusherMaximumPages = 8
+	dataPusherPageBudget   = 30 * time.Second
 )
 
-var tableNamePattern = regexp.MustCompile(`^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$`)
-var collectionNamePattern = regexp.MustCompile(`^[a-z0-9-]+(?::[a-z0-9_.-]+)?$`)
-
-var errSourceDisabled = errors.New("source is disabled")
+var (
+	tableNamePattern      = regexp.MustCompile(`^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$`)
+	collectionNamePattern = regexp.MustCompile(`^[a-z0-9-]+(?::[a-z0-9_.-]+)?$`)
+	errSourceDisabled     = errors.New("source is disabled")
+	// ErrResultTruncated reports that a bounded source transfer stopped before
+	// exhaustive coverage. Callers keep the usable rows and surface the limit.
+	ErrResultTruncated = errors.New("source result reached its bounded transfer budget")
+)
 
 type resolvedSource struct {
 	Service       string
@@ -150,14 +158,90 @@ func (live *Live) queryTable(ctx context.Context, service, table string, maximum
 	if !tableNamePattern.MatchString(table) {
 		return nil, errors.New("invalid DataPusher table")
 	}
-	maximum = bound(maximum, 1, 200)
-	query := url.Values{"compact": {"false"}, "maxfeatures": {strconv.Itoa(maximum)}}
+	rowBudget := bound(maximum, 1, dataPusherMaximumRows)
+	pageSize := min(dataPusherPageSize, rowBudget)
+	budget := dataPusherPageBudget
+	if live.cfg.ReadTimeout > 0 && live.cfg.ReadTimeout*2 > budget {
+		budget = live.cfg.ReadTimeout * 2
+	}
+	pageContext, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	rows := []map[string]any{}
+	seen := map[string]bool{}
+	for page := 0; page < dataPusherMaximumPages && len(rows) < rowBudget; page++ {
+		if err := pageContext.Err(); err != nil {
+			return partialRows(rows, err)
+		}
+		pageRows, err := live.queryTablePage(pageContext, service, table, len(rows), pageSize)
+		if err != nil {
+			if len(rows) != 0 {
+				return rows, fmt.Errorf("read DataPusher page %d after %d rows: %w", page+1, len(rows), err)
+			}
+			return nil, err
+		}
+		added := 0
+		for _, row := range pageRows {
+			key := rowFingerprint(row)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			rows = append(rows, row)
+			added++
+			if len(rows) == rowBudget {
+				break
+			}
+		}
+		if added == 0 || len(pageRows) < pageSize {
+			return rows, nil
+		}
+		if len(rows) == rowBudget {
+			if rowBudget >= dataPusherPageSize {
+				return rows, ErrResultTruncated
+			}
+			return rows, nil
+		}
+	}
+	if len(rows) != 0 && len(rows) >= rowBudget {
+		return rows, ErrResultTruncated
+	}
+	return rows, nil
+}
+
+func (live *Live) queryTablePage(ctx context.Context, service, table string, offset, pageSize int) ([]map[string]any, error) {
+	query := url.Values{
+		"compact": {"false"}, "maxfeatures": {strconv.Itoa(pageSize)}, "start": {strconv.Itoa(offset)},
+	}
 	rawURL := dataPusherBase + "/" + service + "/" + url.PathEscape(table) + "/all.json?" + query.Encode()
 	decoded, err := live.getJSON(ctx, rawURL, true)
 	if err != nil {
 		return nil, err
 	}
 	return extractRows(decoded), nil
+}
+
+func partialRows(rows []map[string]any, err error) ([]map[string]any, error) {
+	if len(rows) != 0 {
+		return rows, ErrResultTruncated
+	}
+	return nil, err
+}
+
+func truncationError(values []error) error {
+	for _, value := range values {
+		if errors.Is(value, ErrResultTruncated) {
+			return ErrResultTruncated
+		}
+	}
+	return nil
+}
+
+func rowFingerprint(row map[string]any) string {
+	data, err := json.Marshal(row)
+	if err != nil {
+		return fmt.Sprintf("%v", row)
+	}
+	return string(data)
 }
 
 func extractRows(decoded any) []map[string]any {
@@ -279,11 +363,14 @@ func (live *Live) Departures(ctx context.Context, stopID, line, direction string
 		}
 	}
 	if len(departures) < limit {
-		rows, tableErr := live.queryTable(ctx, source.Service, source.Table, 80)
-		if tableErr == nil {
+		rows, tableErr := live.queryTable(ctx, source.Service, source.Table, dataPusherMaximumRows)
+		if tableErr == nil || len(rows) != 0 {
 			departures = append(departures, mapPassageRows(rows, stopID, stop, line, direction)...)
 		} else if siriErr != nil {
 			return nil, errors.Join(siriErr, tableErr)
+		}
+		if tableErr != nil {
+			return dedupeDepartures(departures, limit), tableErr
 		}
 	}
 	return dedupeDepartures(departures, limit), nil
@@ -389,7 +476,7 @@ func (live *Live) Alerts(ctx context.Context, lines []string) ([]model.TransitAl
 	if sourceErr != nil {
 		return nil, sourceErr
 	}
-	rows, tableErr := live.queryTable(ctx, source.Service, source.Table, 50)
+	rows, tableErr := live.queryTable(ctx, source.Service, source.Table, dataPusherMaximumRows)
 	alerts := mapAlertRows(rows)
 	if len(alerts) == 0 {
 		decoded, siriErr := live.getJSON(ctx, siriSXURL, true)
@@ -402,7 +489,11 @@ func (live *Live) Alerts(ctx context.Context, lines []string) ([]model.TransitAl
 			return nil, errors.Join(tableErr, siriErr)
 		}
 	}
-	return filterAlerts(alerts, lines), nil
+	filtered := filterAlerts(alerts, lines)
+	if tableErr != nil && len(alerts) != 0 {
+		return filtered, tableErr
+	}
+	return filtered, nil
 }
 
 func mapAlertRows(rows []map[string]any) []model.TransitAlert {
@@ -449,15 +540,15 @@ func filterAlerts(alerts []model.TransitAlert, lines []string) []model.TransitAl
 }
 
 func (live *Live) Incidents(ctx context.Context, lines []string) ([]model.AccessibilityIncident, error) {
-	rows, err := live.querySourceTable(ctx, "tcl_accessibility_alerts", "rdata", "tcl_sytral.tclalerteaccessibilite", 50)
-	if err != nil {
+	rows, err := live.querySourceTable(ctx, "tcl_accessibility_alerts", "rdata", "tcl_sytral.tclalerteaccessibilite", dataPusherMaximumRows)
+	if err != nil && len(rows) == 0 {
 		return nil, err
 	}
 	result := make([]model.AccessibilityIncident, 0, len(rows))
 	for index, row := range rows {
 		result = append(result, model.AccessibilityIncident{ID: firstText(row, strconv.Itoa(index), "id", "gid"), Location: firstText(row, "unknown", "code_station", "code_lieu", "equipement"), Status: "inaccessible", Description: text(row, "consequence", "cause", "equipement"), StartAt: parseTime(first(row, "debut_indispo")), EndAt: parseTime(first(row, "fin_indispo"))})
 	}
-	return result, nil
+	return result, err
 }
 
 func (live *Live) CheckStop(ctx context.Context, stopID string) (string, error) {
@@ -496,8 +587,8 @@ func (live *Live) allVelov(ctx context.Context) ([]model.VelovStation, error) {
 	if time.Now().Before(live.velovExpires) {
 		return append([]model.VelovStation(nil), live.velov...), nil
 	}
-	rows, err := live.querySourceTable(ctx, "velov_realtime", "rdata", "jcd_jcdecaux.jcdvelov", 200)
-	if err != nil {
+	rows, err := live.querySourceTable(ctx, "velov_realtime", "rdata", "jcd_jcdecaux.jcdvelov", dataPusherMaximumRows)
+	if err != nil && len(rows) == 0 {
 		return nil, err
 	}
 	retrieved := time.Now().In(model.Paris)
@@ -515,6 +606,9 @@ func (live *Live) allVelov(ctx context.Context) ([]model.VelovStation, error) {
 		observed := parseTime(first(row, "observed_at", "last_update", "last_update_fme", "last_update_gl", "last_updated", "updated_at", "lastupdate", "timestamp"))
 		result = append(result, model.VelovStation{ID: firstText(row, "", "number", "id", "name"), Name: firstText(row, "Vélo'v", "name"), Latitude: latitude, Longitude: longitude, BikesAvailable: integer(row, 0, "available_bikes", "bikes"), DocksAvailable: integer(row, 0, "available_bike_stands", "docks"), Capacity: integer(row, 0, "bike_stands", "capacity"), Status: status, ObservedAt: observed, RetrievedAt: model.Ptr(retrieved)})
 	}
+	if err != nil {
+		return result, err
+	}
 	live.velov = result
 	live.velovExpires = time.Now().Add(live.sourceTTL(ctx, "velov_realtime", 45*time.Second))
 	return append([]model.VelovStation(nil), result...), nil
@@ -525,8 +619,8 @@ func (live *Live) Traffic(context.Context, string) ([]model.TrafficCondition, er
 }
 
 func (live *Live) RoadEvents(ctx context.Context, area string) ([]model.RoadEvent, error) {
-	rows, err := live.querySourceTable(ctx, "road_events", "grandlyon", "pvo_patrimoine_voirie.pvochantierperturbant", 50)
-	if err != nil {
+	rows, err := live.querySourceTable(ctx, "road_events", "grandlyon", "pvo_patrimoine_voirie.pvochantierperturbant", dataPusherMaximumRows)
+	if err != nil && len(rows) == 0 {
 		return nil, err
 	}
 	result := []model.RoadEvent{}
@@ -542,7 +636,7 @@ func (live *Live) RoadEvents(ctx context.Context, area string) ([]model.RoadEven
 		longitude, longitudeOK := number(row, "lon", "lng", "longitude", "x")
 		result = append(result, model.RoadEvent{ID: firstText(row, strconv.Itoa(index), "gid", "id"), Type: "roadworks", Title: title, Description: description, Latitude: numberPointer(latitude, latitudeOK), Longitude: numberPointer(longitude, longitudeOK), StartAt: parseTime(first(row, "debutchantier", "start")), EndAt: parseTime(first(row, "finchantier", "end"))})
 	}
-	return result, nil
+	return result, err
 }
 
 func (live *Live) Indicators(context.Context, model.Point, []string, time.Time) ([]model.IndicatorValue, error) {
@@ -556,33 +650,40 @@ func (live *Live) Facilities(ctx context.Context, point model.Point, categories 
 		"bike_pump":      {"bike_pumps", "grandlyon", "pvo_patrimoine_voirie.pvostationvelovpompe", "nom"},
 	}
 	result := []model.Facility{}
+	byCategory := map[string][]model.Facility{}
 	requestedSources := 0
 	successfulSources := 0
 	var sourceErrors []error
 	for _, category := range categories {
 		if category == "velov_station" {
 			requestedSources++
-			stations, err := live.Stations(ctx, point, radius, limitPerCategory)
-			if err != nil {
+			stations, err := live.Stations(ctx, point, radius, dataPusherMaximumRows)
+			if err != nil && len(stations) == 0 {
 				sourceErrors = append(sourceErrors, err)
 				continue
 			}
+			if err != nil {
+				sourceErrors = append(sourceErrors, err)
+			}
 			successfulSources++
 			for _, station := range stations {
-				result = append(result, model.Facility{ID: station.ID, Name: station.Name, Category: category, Latitude: station.Latitude, Longitude: station.Longitude, DistanceM: station.DistanceM, OpenStatus: station.Status})
+				byCategory[category] = append(byCategory[category], model.Facility{ID: station.ID, Name: station.Name, Category: category, Latitude: station.Latitude, Longitude: station.Longitude, DistanceM: station.DistanceM, OpenStatus: station.Status})
 			}
 			continue
 		}
 		if category == "waste_facility" {
 			requestedSources++
-			facilities, err := live.WasteFacilities(ctx, point, "unknown", radius, limitPerCategory)
-			if err != nil {
+			facilities, err := live.WasteFacilities(ctx, point, "unknown", radius, dataPusherMaximumRows)
+			if err != nil && len(facilities) == 0 {
 				sourceErrors = append(sourceErrors, err)
 				continue
 			}
+			if err != nil {
+				sourceErrors = append(sourceErrors, err)
+			}
 			successfulSources++
 			for _, facility := range facilities {
-				result = append(result, model.Facility{ID: facility.ID, Name: facility.Name, Category: category, Latitude: facility.Latitude, Longitude: facility.Longitude, DistanceM: facility.DistanceM, OpenStatus: facility.OpenStatus, OpeningHoursRaw: facility.OpeningHoursRaw})
+				byCategory[category] = append(byCategory[category], model.Facility{ID: facility.ID, Name: facility.Name, Category: category, Latitude: facility.Latitude, Longitude: facility.Longitude, DistanceM: facility.DistanceM, OpenStatus: facility.OpenStatus, OpeningHoursRaw: facility.OpeningHoursRaw})
 			}
 			continue
 		}
@@ -593,27 +694,38 @@ func (live *Live) Facilities(ctx context.Context, point model.Point, categories 
 			continue
 		}
 		requestedSources++
-		rows, err := live.querySourceTable(ctx, table[0], table[1], table[2], 100)
-		if err != nil {
+		rows, err := live.querySourceTable(ctx, table[0], table[1], table[2], dataPusherMaximumRows)
+		if err != nil && len(rows) == 0 {
 			sourceErrors = append(sourceErrors, err)
 			continue
 		}
+		if err != nil {
+			sourceErrors = append(sourceErrors, err)
+		}
 		successfulSources++
-		count := 0
-		for _, row := range rows {
+		for index, row := range rows {
 			latitude, latitudeOK := number(row, "lat", "latitude")
 			longitude, longitudeOK := number(row, "lon", "lng", "longitude")
 			if !latitudeOK || !longitudeOK {
 				continue
 			}
 			distance := model.Distance(point, model.Point{Latitude: latitude, Longitude: longitude})
-			if distance > radius || count >= bound(limitPerCategory, 1, 20) {
+			if distance > radius {
 				continue
 			}
 			name := firstText(row, facilityDefault(category), table[3], "adresse", "nom", "name")
-			result = append(result, model.Facility{ID: firstText(row, category+"-"+strconv.Itoa(count), "gid", "id", table[3]), Name: name, Category: category, Latitude: latitude, Longitude: longitude, DistanceM: &distance, OpenStatus: "unknown", OpeningHoursRaw: optional(text(row, "opening_hours", "openinghoursspecification", "horaires"))})
-			count++
+			byCategory[category] = append(byCategory[category], model.Facility{ID: firstText(row, category+"-"+strconv.Itoa(index), "gid", "id", table[3]), Name: name, Category: category, Latitude: latitude, Longitude: longitude, DistanceM: &distance, OpenStatus: "unknown", OpeningHoursRaw: optional(text(row, "opening_hours", "openinghoursspecification", "horaires"))})
 		}
+	}
+	limit := bound(limitPerCategory, 1, 20)
+	for _, facilities := range byCategory {
+		sort.SliceStable(facilities, func(i, j int) bool {
+			return model.Value(facilities[i].DistanceM) < model.Value(facilities[j].DistanceM)
+		})
+		if len(facilities) > limit {
+			facilities = facilities[:limit]
+		}
+		result = append(result, facilities...)
 	}
 	sort.Slice(result, func(i, j int) bool { return *result[i].DistanceM < *result[j].DistanceM })
 	if len(sourceErrors) != 0 {
@@ -626,8 +738,8 @@ func (live *Live) Facilities(ctx context.Context, point model.Point, categories 
 }
 
 func (live *Live) WasteFacilities(ctx context.Context, point model.Point, category string, radius float64, limit int) ([]model.WasteFacility, error) {
-	rows, err := live.querySourceTable(ctx, "waste_facilities", "grandlyon", "gip_proprete.gipdecheterie_3_0_0", 50)
-	if err != nil {
+	rows, err := live.querySourceTable(ctx, "waste_facilities", "grandlyon", "gip_proprete.gipdecheterie_3_0_0", dataPusherMaximumRows)
+	if err != nil && len(rows) == 0 {
 		return nil, err
 	}
 	result := []model.WasteFacility{}
@@ -645,7 +757,7 @@ func (live *Live) WasteFacilities(ctx context.Context, point model.Point, catego
 		result = append(result, model.WasteFacility{ID: firstText(row, "", "identifiant", "gid", "id", "adresse"), Name: facilityLabel(row), Latitude: latitude, Longitude: longitude, AcceptedCategories: accepted, DistanceM: &distance, OpenStatus: firstText(row, "unknown", "open_status"), OpeningHoursRaw: optional(text(row, "opening_hours", "openinghoursspecification", "horaires"))})
 	}
 	sort.Slice(result, func(i, j int) bool { return *result[i].DistanceM < *result[j].DistanceM })
-	return result[:min(len(result), bound(limit, 1, 20))], nil
+	return result[:min(len(result), bound(limit, 1, 20))], err
 }
 
 func (live *Live) Parkings(ctx context.Context, point model.Point, types []string, radius float64, minimumSpaces, limit int) ([]model.ParkingOption, error) {
@@ -685,11 +797,12 @@ func (live *Live) Parkings(ctx context.Context, point model.Point, types []strin
 		if sourceErr != nil {
 			err = sourceErr
 		} else {
-			rows, err = live.queryTable(ctx, source.Service, source.Table, 100)
+			rows, err = live.queryTable(ctx, source.Service, source.Table, dataPusherMaximumRows)
 		}
 		if err != nil {
 			sourceErrors = append(sourceErrors, err)
-		} else {
+		}
+		if err == nil || len(rows) != 0 {
 			publicSucceeded = true
 		}
 		for _, row := range rows {
@@ -704,10 +817,11 @@ func (live *Live) Parkings(ctx context.Context, point model.Point, types []strin
 	}
 	if allowed["park_and_ride"] {
 		requestedSources++
-		rows, err := live.querySourceTable(ctx, "park_and_ride", "rdata", "tcl_sytral.tclparcrelaistr", 50)
+		rows, err := live.querySourceTable(ctx, "park_and_ride", "rdata", "tcl_sytral.tclparcrelaistr", dataPusherMaximumRows)
 		if err != nil {
 			sourceErrors = append(sourceErrors, err)
-		} else {
+		}
+		if err == nil || len(rows) != 0 {
 			successfulSources++
 		}
 		for _, row := range rows {
@@ -824,19 +938,25 @@ func (live *Live) parkingAvailability(ctx context.Context) (map[string]int, []ma
 	var observed *time.Time
 	sourceSucceeded := false
 	sourceErrors := []error{}
-	items, err := live.fetchOGCItems(ctx, collection, 100)
+	items, err := live.fetchOGCItems(ctx, collection, dataPusherMaximumRows)
 	if err == nil {
 		sourceSucceeded = true
+	}
+	if len(items) != 0 {
 		addParkingAvailability(items, mapping, &liveRows, &observed)
-	} else {
+	}
+	if err != nil {
 		sourceErrors = append(sourceErrors, err)
 	}
 	if len(mapping) == 0 {
-		items, wfsErr := live.fetchWFSItems(ctx, collection, 100)
+		items, wfsErr := live.fetchWFSItems(ctx, collection, dataPusherMaximumRows)
 		if wfsErr == nil {
 			sourceSucceeded = true
+		}
+		if len(items) != 0 {
 			addParkingAvailability(items, mapping, &liveRows, &observed)
-		} else {
+		}
+		if wfsErr != nil {
 			sourceErrors = append(sourceErrors, wfsErr)
 		}
 	}
@@ -846,12 +966,13 @@ func (live *Live) parkingAvailability(ctx context.Context) (map[string]int, []ma
 			candidates = [][2]string{{source.Service, source.Table}}
 		}
 		for _, candidate := range candidates {
-			rows, queryErr := live.queryTable(ctx, candidate[0], candidate[1], 100)
+			rows, queryErr := live.queryTable(ctx, candidate[0], candidate[1], dataPusherMaximumRows)
+			if queryErr == nil {
+				sourceSucceeded = true
+			}
 			if queryErr != nil {
 				sourceErrors = append(sourceErrors, queryErr)
-				continue
 			}
-			sourceSucceeded = true
 			for _, row := range rows {
 				name := firstText(row, "", "nom", "name", "id")
 				if available := optionalInteger(row, "places_disponibles", "available", "nb_places_disponibles"); name != "" && available != nil {
@@ -867,6 +988,8 @@ func (live *Live) parkingAvailability(ctx context.Context) (map[string]int, []ma
 	live.parkingErr = nil
 	if !sourceSucceeded {
 		live.parkingErr = errors.Join(sourceErrors...)
+	} else if err := truncationError(sourceErrors); err != nil {
+		live.parkingErr = err
 	}
 	live.parkingLive, live.parkingRows, live.parkingObserved = mapping, cloneRows(liveRows), observed
 	live.parkingRetrieved = time.Now().In(model.Paris)
@@ -949,31 +1072,109 @@ func (live *Live) fetchOGCItems(ctx context.Context, collection string, limit in
 	if !collectionNamePattern.MatchString(collection) {
 		return nil, errors.New("invalid OGC collection")
 	}
-	values := url.Values{"f": {"application/json"}, "limit": {strconv.Itoa(bound(limit, 1, 200))}}
-	decoded, err := live.getJSON(ctx, "https://data.grandlyon.com/geoserver/ogc/features/v1/collections/"+collection+"/items?"+values.Encode(), false)
-	if err != nil {
-		return nil, err
+	rowBudget := bound(limit, 1, dataPusherMaximumRows)
+	pageSize := min(dataPusherPageSize, rowBudget)
+	budget := dataPusherPageBudget
+	if live.cfg.ReadTimeout > 0 && live.cfg.ReadTimeout*2 > budget {
+		budget = live.cfg.ReadTimeout * 2
 	}
-	return extractRows(decoded), nil
+	pageContext, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	rows := []map[string]any{}
+	seen := map[string]bool{}
+	for page := 0; page < dataPusherMaximumPages && len(rows) < rowBudget; page++ {
+		if err := pageContext.Err(); err != nil {
+			return partialRows(rows, err)
+		}
+		values := url.Values{
+			"f": {"application/json"}, "limit": {strconv.Itoa(pageSize)}, "offset": {strconv.Itoa(len(rows))},
+		}
+		decoded, err := live.getJSON(pageContext, "https://data.grandlyon.com/geoserver/ogc/features/v1/collections/"+collection+"/items?"+values.Encode(), false)
+		if err != nil {
+			if len(rows) != 0 {
+				return rows, fmt.Errorf("read OGC page %d after %d rows: %w", page+1, len(rows), err)
+			}
+			return nil, err
+		}
+		pageRows := extractRows(decoded)
+		added := appendUniqueRows(&rows, seen, pageRows, rowBudget)
+		if added == 0 || len(pageRows) < pageSize {
+			return rows, nil
+		}
+		if len(rows) == rowBudget {
+			return rows, ErrResultTruncated
+		}
+	}
+	if len(rows) != 0 && len(rows) >= rowBudget {
+		return rows, ErrResultTruncated
+	}
+	return rows, nil
 }
 
 func (live *Live) fetchWFSItems(ctx context.Context, collection string, limit int) ([]map[string]any, error) {
 	if !collectionNamePattern.MatchString(collection) {
 		return nil, errors.New("invalid WFS collection")
 	}
-	values := url.Values{
-		"service":      {"WFS"},
-		"version":      {"2.0.0"},
-		"request":      {"GetFeature"},
-		"typeNames":    {collection},
-		"count":        {strconv.Itoa(bound(limit, 1, 200))},
-		"outputFormat": {"application/json"},
+	rowBudget := bound(limit, 1, dataPusherMaximumRows)
+	pageSize := min(dataPusherPageSize, rowBudget)
+	budget := dataPusherPageBudget
+	if live.cfg.ReadTimeout > 0 && live.cfg.ReadTimeout*2 > budget {
+		budget = live.cfg.ReadTimeout * 2
 	}
-	decoded, err := live.getJSON(ctx, "https://data.grandlyon.com/geoserver/ows?"+values.Encode(), true)
-	if err != nil {
-		return nil, err
+	pageContext, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	rows := []map[string]any{}
+	seen := map[string]bool{}
+	for page := 0; page < dataPusherMaximumPages && len(rows) < rowBudget; page++ {
+		if err := pageContext.Err(); err != nil {
+			return partialRows(rows, err)
+		}
+		values := url.Values{
+			"service":      {"WFS"},
+			"version":      {"2.0.0"},
+			"request":      {"GetFeature"},
+			"typeNames":    {collection},
+			"count":        {strconv.Itoa(pageSize)},
+			"startIndex":   {strconv.Itoa(len(rows))},
+			"outputFormat": {"application/json"},
+		}
+		decoded, err := live.getJSON(pageContext, "https://data.grandlyon.com/geoserver/ows?"+values.Encode(), true)
+		if err != nil {
+			if len(rows) != 0 {
+				return rows, fmt.Errorf("read WFS page %d after %d rows: %w", page+1, len(rows), err)
+			}
+			return nil, err
+		}
+		pageRows := extractRows(decoded)
+		added := appendUniqueRows(&rows, seen, pageRows, rowBudget)
+		if added == 0 || len(pageRows) < pageSize {
+			return rows, nil
+		}
+		if len(rows) == rowBudget {
+			return rows, ErrResultTruncated
+		}
 	}
-	return extractRows(decoded), nil
+	if len(rows) != 0 && len(rows) >= rowBudget {
+		return rows, ErrResultTruncated
+	}
+	return rows, nil
+}
+
+func appendUniqueRows(rows *[]map[string]any, seen map[string]bool, pageRows []map[string]any, rowBudget int) int {
+	added := 0
+	for _, row := range pageRows {
+		key := rowFingerprint(row)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		*rows = append(*rows, row)
+		added++
+		if len(*rows) == rowBudget {
+			break
+		}
+	}
+	return added
 }
 
 func bound(value, fallback, maximum int) int {

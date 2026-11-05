@@ -33,8 +33,13 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 	if includes["transit"] {
 		alerts, err := a.Provider.Alerts(ctx, input.Lines)
 		if err != nil {
-			result.Warn("SOURCE_UNAVAILABLE", "tcl_alerts", "TCL alerts are unavailable.", true)
-		} else {
+			if len(alerts) == 0 {
+				result.Warn("SOURCE_UNAVAILABLE", "tcl_alerts", "TCL alerts are unavailable.", true)
+			} else {
+				result.Warn("PARTIAL_RESULT", "tcl_alerts", "TCL alerts are incomplete because a later source page failed.", true)
+			}
+		}
+		if len(alerts) != 0 || err == nil {
 			alerts = uniqueAlerts(alerts)
 			data["alerts"] = alerts
 			statuses := make([]map[string]any, 0, len(input.Lines))
@@ -54,8 +59,13 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 	if includes["accessibility"] {
 		incidents, err := a.Provider.Incidents(ctx, input.Lines)
 		if err != nil {
-			result.Warn("SOURCE_UNAVAILABLE", "tcl_accessibility", "Accessibility data is unavailable.", true)
-		} else {
+			if len(incidents) == 0 {
+				result.Warn("SOURCE_UNAVAILABLE", "tcl_accessibility", "Accessibility data is unavailable.", true)
+			} else {
+				result.Warn("PARTIAL_RESULT", "tcl_accessibility", "Accessibility data is incomplete because a later source page failed.", true)
+			}
+		}
+		if len(incidents) != 0 || err == nil {
 			data["accessibility_incidents"] = incidents
 		}
 	}
@@ -93,10 +103,13 @@ func (a *App) MobilityStatus(ctx context.Context, input model.MobilityStatusInpu
 		}
 		values, err := a.Provider.RoadEvents(ctx, "")
 		if err != nil {
-			result.Warn("SOURCE_UNAVAILABLE", "road_events", "Road events are unavailable.", true)
-		} else {
-			events = append(events, values...)
+			if len(values) == 0 {
+				result.Warn("SOURCE_UNAVAILABLE", "road_events", "Road events are unavailable.", true)
+			} else {
+				result.Warn("PARTIAL_RESULT", "road_events", "Road events are incomplete because a later source page failed.", true)
+			}
 		}
+		events = append(events, values...)
 		events = uniqueRoadEvents(events)
 		if len(areaPoints) != 0 {
 			var omitted int

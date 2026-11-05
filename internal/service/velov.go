@@ -27,11 +27,12 @@ func (a *App) VelovStations(ctx context.Context, ref model.PlaceRef, radiusM flo
 		return result
 	}
 	stations, err := a.Provider.Stations(ctx, *point, radiusM, limit*2)
-	if err != nil {
+	if err != nil && len(stations) == 0 {
 		result := model.NewEnvelope("unavailable", "Vélo'v data is unavailable.", map[string]any{"stations": []model.VelovStation{}})
 		result.Warn("SOURCE_UNAVAILABLE", "velov_realtime", "Vélo'v retrieval failed.", true)
 		return result
 	}
+	partial := err != nil
 	filtered := make([]model.VelovStation, 0, min(limit, len(stations)))
 	for _, station := range stations {
 		distance := model.Distance(*point, model.Point{Latitude: station.Latitude, Longitude: station.Longitude})
@@ -46,6 +47,9 @@ func (a *App) VelovStations(ctx context.Context, ref model.PlaceRef, radiusM flo
 		filtered = filtered[:limit]
 	}
 	result := model.NewEnvelope("ok", fmt.Sprintf("%d Vélo'v station(s) found.", len(filtered)), map[string]any{"stations": filtered})
+	if partial {
+		result.Warn("PARTIAL_RESULT", "velov_realtime", "Vélo'v stations are incomplete because a later source page failed.", true)
+	}
 	now := model.Now()
 	maximumAge := a.maximumStaleSeconds(ctx, "velov_realtime")
 	var oldestObserved *time.Time

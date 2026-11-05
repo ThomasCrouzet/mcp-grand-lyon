@@ -78,8 +78,13 @@ func (app *App) NextDepartures(ctx context.Context, input model.NextDeparturesIn
 	if app.Provider != nil && useRealtime {
 		raw, err := app.Provider.Departures(ctx, stop.ID, input.Line, input.Direction, 100)
 		if err != nil {
-			result.Warn("SOURCE_UNAVAILABLE", "tcl_departures", "Realtime departures are unavailable; use GTFS when possible.", true)
-		} else {
+			if len(raw) == 0 {
+				result.Warn("SOURCE_UNAVAILABLE", "tcl_departures", "Realtime departures are unavailable; use GTFS when possible.", true)
+			} else {
+				result.Warn("PARTIAL_RESULT", "tcl_departures", "Realtime departures are incomplete because a later source page failed.", true)
+			}
+		}
+		if len(raw) != 0 {
 			departures = filter(raw)
 		}
 	}

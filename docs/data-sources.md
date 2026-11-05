@@ -68,6 +68,14 @@ DataPusher is the final fallback.
 Live rows provide actual coordinates and occupancy when the provider supplies valid values.
 The separate capacity feed does not establish current occupancy.
 
+DataPusher queries use `maxfeatures` with `start` offsets, OGC API Features uses
+`limit` with `offset`, and WFS uses `count` with `startIndex`. Each transfer is
+bounded to at most eight pages, 200 rows per page, 1000 rows total, and a
+30-second page budget. Repeated rows stop pagination, later-page failures retain
+earlier usable rows with a partial warning, and reaching a deliberate budget is
+reported as truncated rather than exhaustive. Domain filters and distance sorting
+run before the final user limit, including `limit_per_category` for facilities.
+
 ## Freshness and missing data
 
 Live parking and Vélo'v caches use memory only.
