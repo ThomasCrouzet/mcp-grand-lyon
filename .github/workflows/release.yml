@@ -129,8 +129,63 @@ jobs:
           path: ${{ runner.temp }}/dist/*
           retention-days: 3
 
-  github-release:
+  native-macos:
     needs: [prepare, build]
+    runs-on: macos-14
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+      - name: Execute the macOS arm64 archive natively
+        run: |
+          mkdir -p "$RUNNER_TEMP/installed"
+          tar -xzf "$RUNNER_TEMP/release-assets/grand-lyon-mcp_${VERSION}_darwin_arm64.tar.gz" \
+            -C "$RUNNER_TEMP/installed"
+          binary="$RUNNER_TEMP/installed/grand-lyon-mcp_${VERSION}_darwin_arm64/grand-lyon-mcp"
+          go run ./scripts/native-smoke -binary "$binary" -version "$VERSION"
+
+  native-windows:
+    needs: [prepare, build]
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+      - name: Execute the Windows amd64 archive natively
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP ("release-assets\grand-lyon-mcp_" + $env:VERSION + "_windows_amd64.zip")
+          $installed = Join-Path $env:RUNNER_TEMP "installed"
+          Expand-Archive -Path $archive -DestinationPath $installed -Force
+          $binary = Join-Path $installed ("grand-lyon-mcp_" + $env:VERSION + "_windows_amd64\grand-lyon-mcp.exe")
+          go run ./scripts/native-smoke -binary $binary -version $env:VERSION
+
+  github-release:
+    needs: [prepare, build, native-macos, native-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

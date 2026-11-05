@@ -146,3 +146,14 @@ make release RELEASE_DIR=/new/external/release-directory
 Extract a release archive.
 Run the E2E package with `GLMCP_BINARY` set to the extracted executable.
 This check verifies the archive's actual binary, not a new source build.
+
+The release workflow executes the published archives natively on Linux amd64,
+macOS arm64, and Windows amd64.
+Each native smoke check verifies archive extraction, the binary version, an
+isolated setup with SQLite initialization, `doctor`, MCP stdio discovery of
+exactly ten tools, one asserted offline fixture result, and clean shutdown after
+stdin EOF. Paths containing spaces are exercised.
+A failed native smoke check blocks publication for that release.
+Cross-compilation alone is not treated as native execution evidence.
+Keep smoke output and hashes in local or runner temporary storage; do not upload
+verification reports to GitHub.
