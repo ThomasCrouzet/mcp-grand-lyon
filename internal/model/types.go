@@ -211,6 +211,9 @@ type IndicatorValue struct {
 type TripOption struct {
 	Mode                     string         `json:"mode" yaml:"mode"`
 	Score                    float64        `json:"score" yaml:"score"`
+	Evidence                 string         `json:"evidence" yaml:"evidence"`
+	Eligible                 bool           `json:"eligible" yaml:"eligible"`
+	IneligibilityReasons     []string       `json:"ineligibility_reasons" yaml:"ineligibility_reasons"`
 	EstimatedDurationSeconds *int           `json:"estimated_duration_seconds" yaml:"estimated_duration_seconds"`
 	DepartureAt              *time.Time     `json:"departure_at" yaml:"departure_at"`
 	ArrivalAt                *time.Time     `json:"arrival_at" yaml:"arrival_at"`

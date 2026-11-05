@@ -148,10 +148,16 @@ Explicit zero and false values remain unchanged.
 
 An explicit `modes` list cannot be empty.
 `arrival_before` must occur after `departure_at`.
-The deadline removes late or untimed options.
-`avoid_disruptions` removes options with known alerts.
+Every option carries `evidence` (`calculated`, `estimated`, or `unavailable`),
+`eligible`, and `ineligibility_reasons`. Only eligible options can be
+`recommended_mode`; unavailable or constraint-breaking modes may remain visible as
+information. `max_walking_m` applies to total walking for every mode, including
+access, transfer, and final segments. A missing walking distance never satisfies
+the limit.
+The deadline rejects late options and options with no verified arrival.
+`avoid_disruptions` rejects options with known alerts.
 `wheelchair` keeps only options with verified accessible status.
-Without a deadline, an unplanned TCL option can remain with `ROUTING_UNAVAILABLE`.
+Without a deadline, an unplanned TCL option remains visible as `evidence: "unavailable"` with a `ROUTING_UNAVAILABLE` warning, and it is never recommended.
 
 ## `lyon_parking_options`
 

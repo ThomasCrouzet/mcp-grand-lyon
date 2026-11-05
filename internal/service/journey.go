@@ -62,7 +62,7 @@ func (app *App) TripOptions(ctx context.Context, input model.TripOptionsInput) m
 		duration := int(distance / 1.4)
 		walking := int(distance)
 		options = append(options, model.TripOption{
-			Mode: "walk", Score: app.tripScore(duration, 0.95, 0, walking, 0.5),
+			Mode: "walk", Score: app.tripScore(duration, 0.95, 0, walking, 0.5), Evidence: "estimated",
 			EstimatedDurationSeconds: &duration, WalkingDistanceM: &walking,
 			Summary: fmt.Sprintf("Walk about %d m", walking), Realtime: false,
 			Alerts: []model.TransitAlert{}, Sources: []string{"haversine"},
@@ -70,11 +70,12 @@ func (app *App) TripOptions(ctx context.Context, input model.TripOptionsInput) m
 	}
 	if seenModes["car"] {
 		duration := int(distance / 8.0)
+		walking := 0
 		options = append(options, model.TripOption{
-			Mode: "car", Score: app.tripScore(duration, 0.7, 0.2, 0, 0.5),
-			EstimatedDurationSeconds: &duration,
-			Summary:                  fmt.Sprintf("Estimated car trip over %d m straight-line distance", int(distance)),
-			Alerts:                   []model.TransitAlert{}, Sources: []string{"estimate"},
+			Mode: "car", Score: app.tripScore(duration, 0.7, 0.2, walking, 0.5), Evidence: "estimated",
+			EstimatedDurationSeconds: &duration, WalkingDistanceM: &walking,
+			Summary: fmt.Sprintf("Estimated car trip over %d m straight-line distance", int(distance)),
+			Alerts:  []model.TransitAlert{}, Sources: []string{"estimate"},
 		})
 	}
 	if seenModes["velov"] {
@@ -88,55 +89,90 @@ func (app *App) TripOptions(ctx context.Context, input model.TripOptionsInput) m
 	}
 
 	options = applyTripTiming(options, departure)
-	if preferences.AvoidDisruptions {
-		options = filterTripOptions(options, func(option model.TripOption) bool { return len(option.Alerts) == 0 })
-	}
-	if preferences.Wheelchair {
-		options = filterTripOptions(options, func(option model.TripOption) bool {
-			if option.Accessibility == nil {
-				return false
-			}
-			switch strings.ToLower(*option.Accessibility) {
-			case "accessible", "wheelchair", "wheelchair_accessible":
-				return true
-			default:
-				return false
-			}
-		})
-		if len(options) == 0 {
-			envelope.Warn("PARTIAL_RESULT", "journey_planner", "No option has verified wheelchair accessibility.", false)
+	evaluateTripOptions(options, preferences, input.ArrivalBefore)
+	sort.SliceStable(options, func(i, j int) bool {
+		if options[i].Eligible != options[j].Eligible {
+			return options[i].Eligible
 		}
-	}
-	if input.ArrivalBefore != nil {
-		deadline := *input.ArrivalBefore
-		options = filterTripOptions(options, func(option model.TripOption) bool {
-			return option.ArrivalAt != nil && !option.ArrivalAt.After(deadline)
-		})
-	}
-
-	sort.SliceStable(options, func(i, j int) bool { return options[i].Score > options[j].Score })
+		return options[i].Score > options[j].Score
+	})
 	status := envelope.Status
 	var recommended any
-	if len(options) != 0 {
-		recommended = options[0].Mode
-	} else if preferences.Wheelchair {
-		status = "unavailable"
-	} else if input.ArrivalBefore != nil || preferences.AvoidDisruptions {
+	var recommendedOption *model.TripOption
+	for index := range options {
+		if options[index].Eligible {
+			recommended = options[index].Mode
+			recommendedOption = &options[index]
+			break
+		}
+	}
+	if recommended == nil {
 		status = "not_found"
-	} else if len(envelope.Warnings) != 0 {
-		status = "unavailable"
-	} else {
-		status = "not_found"
+		if preferences.Wheelchair || len(envelope.Warnings) != 0 || hasUnavailableOption(options) {
+			status = "unavailable"
+		}
 	}
 	envelope.Status = status
 	envelope.Data = tripData(options, departure, input.ArrivalBefore)
 	envelope.Data["recommended_mode"] = recommended
 	if recommended == nil {
-		envelope.Summary = "No trip option satisfies the request."
+		envelope.Summary = "No eligible trip option satisfies the request."
 	} else {
-		envelope.Summary = fmt.Sprintf("Recommended option: %s.", recommended)
+		envelope.Summary = fmt.Sprintf("Recommended option: %s.", recommendedOption.Mode)
 	}
 	return envelope
+}
+
+func evaluateTripOptions(options []model.TripOption, preferences model.TripPreferences, deadline *time.Time) {
+	for index := range options {
+		option := &options[index]
+		reasons := []string{}
+		switch option.Evidence {
+		case "calculated", "estimated":
+		case "unavailable":
+			reasons = append(reasons, "no calculated itinerary is available")
+		default:
+			option.Evidence = "unavailable"
+			reasons = append(reasons, "itinerary evidence is unavailable")
+		}
+		if option.WalkingDistanceM == nil {
+			reasons = append(reasons, "total walking distance is unknown")
+		} else if *option.WalkingDistanceM > preferences.MaxWalkingM {
+			reasons = append(reasons, fmt.Sprintf("total walking distance exceeds max_walking_m (%d m)", preferences.MaxWalkingM))
+		}
+		if deadline != nil {
+			if option.ArrivalAt == nil {
+				reasons = append(reasons, "arrival time is unknown, so arrival_before cannot be verified")
+			} else if option.ArrivalAt.After(*deadline) {
+				reasons = append(reasons, "arrival is after arrival_before")
+			}
+		}
+		if preferences.AvoidDisruptions && len(option.Alerts) != 0 {
+			reasons = append(reasons, "known service alerts affect this option")
+		}
+		if preferences.Wheelchair {
+			accessibility := ""
+			if option.Accessibility != nil {
+				accessibility = strings.ToLower(*option.Accessibility)
+			}
+			switch accessibility {
+			case "accessible", "wheelchair", "wheelchair_accessible":
+			default:
+				reasons = append(reasons, "wheelchair accessibility is not verified")
+			}
+		}
+		option.Eligible = len(reasons) == 0
+		option.IneligibilityReasons = reasons
+	}
+}
+
+func hasUnavailableOption(options []model.TripOption) bool {
+	for _, option := range options {
+		if option.Evidence == "unavailable" {
+			return true
+		}
+	}
+	return false
 }
 
 func invalidTrip(message string) model.Envelope {
@@ -188,21 +224,42 @@ func (app *App) appendVelovOption(ctx context.Context, envelope *model.Envelope,
 		envelope.Warn("PARTIAL_RESULT", "velov_realtime", "No station pair satisfies the requested availability.", false)
 		return
 	}
-	bikeDistance := model.Distance(
-		model.Point{Latitude: originStations[0].Latitude, Longitude: originStations[0].Longitude},
-		model.Point{Latitude: destinationStations[0].Latitude, Longitude: destinationStations[0].Longitude},
-	)
-	walking := int(model.Value(originStations[0].DistanceM) + model.Value(destinationStations[0].DistanceM))
-	if walking > preferences.MaxWalkingM {
+	var selectedOrigin, selectedDestination *model.VelovStation
+	bestDuration := 0
+	bestWalking := 0
+	for originIndex := range originStations {
+		for destinationIndex := range destinationStations {
+			originStation := &originStations[originIndex]
+			destinationStation := &destinationStations[destinationIndex]
+			if originStation.DistanceM == nil || destinationStation.DistanceM == nil {
+				continue
+			}
+			walking := int(*originStation.DistanceM + *destinationStation.DistanceM)
+			if walking > preferences.MaxWalkingM {
+				continue
+			}
+			bikeDistance := model.Distance(
+				model.Point{Latitude: originStation.Latitude, Longitude: originStation.Longitude},
+				model.Point{Latitude: destinationStation.Latitude, Longitude: destinationStation.Longitude},
+			)
+			duration := int(bikeDistance/4.0) + walking
+			if selectedOrigin == nil || duration < bestDuration {
+				selectedOrigin, selectedDestination = originStation, destinationStation
+				bestDuration, bestWalking = duration, walking
+			}
+		}
+	}
+	if selectedOrigin == nil {
 		envelope.Warn("PARTIAL_RESULT", "velov_realtime", "No station pair satisfies the requested walking limit.", false)
 		return
 	}
-	duration := int(bikeDistance/4.0) + walking
-	availability := fmt.Sprintf("%d bikes / %d docks", originStations[0].BikesAvailable, destinationStations[0].DocksAvailable)
+	duration := bestDuration
+	walking := bestWalking
+	availability := fmt.Sprintf("%d bikes / %d docks", selectedOrigin.BikesAvailable, selectedDestination.DocksAvailable)
 	*options = append(*options, model.TripOption{
-		Mode: "velov", Score: app.tripScore(duration, 0.75, 0, walking, 0.8),
+		Mode: "velov", Score: app.tripScore(duration, 0.75, 0, walking, 0.8), Evidence: "estimated",
 		EstimatedDurationSeconds: &duration, WalkingDistanceM: &walking,
-		Availability: &availability, Summary: fmt.Sprintf("Velov %s to %s", originStations[0].Name, destinationStations[0].Name),
+		Availability: &availability, Summary: fmt.Sprintf("Velov %s to %s", selectedOrigin.Name, selectedDestination.Name),
 		Realtime: true, Alerts: []model.TransitAlert{}, Sources: []string{"velov_realtime"},
 	})
 }
@@ -210,6 +267,9 @@ func (app *App) appendVelovOption(ctx context.Context, envelope *model.Envelope,
 func filterStations(stations []model.VelovStation, minimum int, bikes bool) []model.VelovStation {
 	result := make([]model.VelovStation, 0, len(stations))
 	for _, station := range stations {
+		if station.Status == "closed" {
+			continue
+		}
 		available := station.DocksAvailable
 		if bikes {
 			available = station.BikesAvailable
@@ -255,9 +315,13 @@ func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Env
 	if selected == nil {
 		return
 	}
-	walking := 200
+	walking := 0
+	var walkingDistance *int
 	if selected.DistanceM != nil {
 		walking = int(*selected.DistanceM)
+		walkingDistance = &walking
+	} else {
+		envelope.Warn("PARTIAL_RESULT", "parking", "The park-and-ride walking distance is unknown.", false)
 	}
 	duration := int(distance / 9.0)
 	availabilityScore := 0.2
@@ -273,8 +337,8 @@ func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Env
 		}
 	}
 	*options = append(*options, model.TripOption{
-		Mode: "park_and_ride", Score: app.tripScore(duration, 0.7, 0.1, walking, availabilityScore),
-		EstimatedDurationSeconds: &duration, WalkingDistanceM: &walking,
+		Mode: "park_and_ride", Score: app.tripScore(duration, 0.7, 0.1, walking, availabilityScore), Evidence: "estimated",
+		EstimatedDurationSeconds: &duration, WalkingDistanceM: walkingDistance,
 		Availability: availability,
 		Summary:      "Park-and-ride at " + selected.Name, Realtime: selected.Realtime,
 		Alerts: []model.TransitAlert{}, Sources: []string{"parking"},
@@ -283,21 +347,21 @@ func (app *App) appendParkAndRideOption(ctx context.Context, envelope *model.Env
 
 func (app *App) appendTransitOptions(ctx context.Context, envelope *model.Envelope, options *[]model.TripOption, origin, destination model.Point, departure time.Time, preferences model.TripPreferences) {
 	if app.Provider == nil || !app.Config.TransitousEnabled {
-		appendTransitFallback(envelope, options, app)
+		appendTransitFallback(envelope, options)
 		return
 	}
 	planned, err := app.Provider.Plan(ctx, origin, destination, departure, []string{"tcl"}, preferences)
 	if err != nil || len(planned) == 0 {
-		appendTransitFallback(envelope, options, app)
+		appendTransitFallback(envelope, options)
 		return
 	}
 	for _, option := range planned {
+		if option.Evidence == "" {
+			option.Evidence = "calculated"
+		}
 		if option.EstimatedDurationSeconds == nil {
-			walking := model.Value(option.WalkingDistanceM)
-			if walking == 0 {
-				walking = 400
-			}
-			option.Score = app.tripScoreUnknownDuration(0.75, 0.1, walking, 0.4)
+			option.Evidence = "unavailable"
+			option.Score = 0
 			if option.Summary == "" {
 				option.Summary = "TCL duration is unavailable."
 			}
@@ -312,18 +376,20 @@ func (app *App) appendTransitOptions(ctx context.Context, envelope *model.Envelo
 	}
 }
 
-func appendTransitFallback(envelope *model.Envelope, options *[]model.TripOption, app *App) {
+func appendTransitFallback(envelope *model.Envelope, options *[]model.TripOption) {
 	envelope.Warn("ROUTING_UNAVAILABLE", "journey_planner", "A reliable TCL door-to-door duration is unavailable.", true)
-	walking := 400
 	*options = append(*options, model.TripOption{
-		Mode: "tcl", Score: app.tripScoreUnknownDuration(0.75, 0.1, walking, 0.4),
-		WalkingDistanceM: &walking, Summary: "TCL duration is unavailable.",
-		Alerts: []model.TransitAlert{}, Sources: []string{},
+		Mode: "tcl", Evidence: "unavailable", Eligible: false,
+		Summary: "TCL duration is unavailable; no itinerary or walking distance was calculated.",
+		Alerts:  []model.TransitAlert{}, Sources: []string{},
 	})
 }
 
 func applyTripTiming(options []model.TripOption, departure time.Time) []model.TripOption {
 	for index := range options {
+		if options[index].Evidence == "unavailable" {
+			continue
+		}
 		if options[index].DepartureAt == nil {
 			options[index].DepartureAt = model.Ptr(departure)
 		}
@@ -335,25 +401,10 @@ func applyTripTiming(options []model.TripOption, departure time.Time) []model.Tr
 	return options
 }
 
-func filterTripOptions(options []model.TripOption, keep func(model.TripOption) bool) []model.TripOption {
-	result := make([]model.TripOption, 0, len(options))
-	for _, option := range options {
-		if keep(option) {
-			result = append(result, option)
-		}
-	}
-	return result
-}
-
 func (app *App) tripScore(duration int, reliability, disruptions float64, walking int, availability float64) float64 {
 	weights := app.journeyWeights()
 	durationScore := math.Max(0, 1-float64(duration)/5400)
 	return boundedScore(weights.Duration*durationScore + weights.Reliability*reliability + weights.Disruptions*math.Max(0, 1-disruptions) + weights.Walking*math.Max(0, 1-float64(walking)/2000) + weights.Availability*availability + weights.UserPreference*0.5)
-}
-
-func (app *App) tripScoreUnknownDuration(reliability, disruptions float64, walking int, availability float64) float64 {
-	weights := app.journeyWeights()
-	return boundedScore(weights.Duration*0.15 + weights.Reliability*reliability + weights.Disruptions*math.Max(0, 1-disruptions) + weights.Walking*math.Max(0, 1-float64(walking)/2000) + weights.Availability*availability + weights.UserPreference*0.5)
 }
 
 func (app *App) journeyWeights() model.JourneyScoringWeights {

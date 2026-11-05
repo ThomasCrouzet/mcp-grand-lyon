@@ -62,6 +62,7 @@ MCP marks `invalid_request` and `unavailable` results with `isError=true` while 
 A successful MCP exchange can contain an unavailable domain result: inspect warnings, source dates, and `realtime` flags before relying on it.
 
 - **Input validation.** Schemas reject unknown fields and invalid values. A place reference uses exactly one of a query, place ID, coordinate pair, or profile-place name.
+- **Trip eligibility.** Only options whose evidence satisfies the walking, deadline, disruption, and accessibility constraints can be recommended. Missing itineraries and unknown walking distances stay visible as ineligible information with a reason.
 - **Data quality.** GTFS results are always theoretical. Missing parking occupancy stays `null`; zero means full. Missing accessibility evidence stays `unknown`.
 - **Local writes.** Tools do not change upstream data. Some queries save local briefing snapshots or Vélo'v observations, and startup applies pending SQLite migrations.
 
